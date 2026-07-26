@@ -1,0 +1,47 @@
+/* NASLink Workbench utilities · token-only visual layer */
+.sr-only {
+  position: absolute !important;
+  width: var(--rule-hair) !important;
+  height: var(--rule-hair) !important;
+  padding: 0 !important;
+  margin: calc(var(--rule-hair) * -1) !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.shell,
+.top-nav,
+.workspace,
+.panel,
+.page-chrome,
+.panel-content,
+.config-grid,
+.binding-layout,
+.policy-grid,
+.table-wrap { min-width: 0; }
+
+.source-test-proxy { margin-block-start: var(--space-xs); }
+
+.match-table { margin-block-end: 0; }
+
+.run-history > .list-head,
+.audit-list > .list-head { margin-block-end: var(--space-2xs); }
+
+.binding-list .empty-state {
+  min-height: 8rem;
+  margin-block-start: var(--space-xs);
+  padding: var(--space-sm);
+  border-style: solid;
+}
+
+.binding-list .empty-state p { margin: 0; }
+
+.copy-line:has(button) { grid-template-columns: minmax(0, 1fr); }
+.copy-line .text-button { justify-self: start; margin: 0; }
+
+@media (min-width: 40rem) {
+  .copy-line:has(button) { grid-template-columns: 8rem minmax(0, 1fr) auto; }
+  .copy-line .text-button { justify-self: auto; }
+}

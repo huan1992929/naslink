@@ -1,0 +1,63 @@
+#!/bin/sh
+
+PACKAGE="NASLink"
+TARGET_DIR="/var/packages/${PACKAGE}/target"
+VAR_DIR="/var/packages/${PACKAGE}/var"
+BIN="${TARGET_DIR}/bin/naslink"
+PID_FILE="${VAR_DIR}/naslink.pid"
+LOG_FILE="${VAR_DIR}/naslink.log"
+LISTEN_ADDR="0.0.0.0:17890"
+
+is_running() {
+    if [ ! -f "${PID_FILE}" ]; then
+        return 1
+    fi
+    pid="$(sed -n '1p' "${PID_FILE}")"
+    case "${pid}" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    kill -0 "${pid}" 2>/dev/null
+}
+
+case "$1" in
+    start)
+        mkdir -p "${VAR_DIR}"
+        if is_running; then
+            exit 0
+        fi
+        nohup "${BIN}" --listen "${LISTEN_ADDR}" --data-dir "${VAR_DIR}" >>"${LOG_FILE}" 2>&1 &
+        echo "$!" >"${PID_FILE}"
+        sleep 2
+        if is_running; then
+            exit 0
+        fi
+        exit 1
+        ;;
+    stop)
+        if is_running; then
+            pid="$(sed -n '1p' "${PID_FILE}")"
+            kill "${pid}" 2>/dev/null || true
+            count=0
+            while kill -0 "${pid}" 2>/dev/null && [ "${count}" -lt 20 ]; do
+                sleep 1
+                count=$((count + 1))
+            done
+        fi
+        rm -f "${PID_FILE}"
+        exit 0
+        ;;
+    status)
+        if is_running; then
+            exit 0
+        fi
+        exit 3
+        ;;
+    log)
+        echo "${LOG_FILE}"
+        exit 0
+        ;;
+    *)
+        exit 1
+        ;;
+esac
+

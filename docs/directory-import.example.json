@@ -1,0 +1,28 @@
+{
+  "departments": [
+    {
+      "id": "1",
+      "name": "示例公司",
+      "parent_id": "0"
+    },
+    {
+      "id": "2",
+      "name": "设计中心",
+      "parent_id": "1"
+    }
+  ],
+  "users": [
+    {
+      "subject": "union:replace-with-test-union-id",
+      "user_id": "001",
+      "union_id": "replace-with-test-union-id",
+      "name": "测试员工",
+      "employee_no": "naslink_poc_001",
+      "email": "naslink-test@example.com",
+      "department_ids": [
+        "2"
+      ],
+      "active": true
+    }
+  ]
+}

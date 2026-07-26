@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# DSM 7 creates the package's persistent var directory and assigns it to the
+# package user. Do not request root privileges or change framework ownership.
+exit 0

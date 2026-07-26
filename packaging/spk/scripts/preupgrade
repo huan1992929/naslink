@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# DSM stops the package before replacing the target directory. Runtime data,
+# encrypted settings and licenses live under /var/packages/NASLink/var and are
+# intentionally left untouched during an in-place upgrade.
+exit 0

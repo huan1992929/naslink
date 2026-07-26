@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# The DSM package framework starts the upgraded package after this hook. No
+# migration is required for 0.3.0-0003 because its persisted schema is
+# backward-compatible with 0.3.0-0002.
+exit 0

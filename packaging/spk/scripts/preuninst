@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Persistent configuration is intentionally retained during POC uninstall.
+exit 0
+

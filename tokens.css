@@ -1,0 +1,77 @@
+:root {
+  --color-paper: oklch(98.2% 0.007 145);
+  --color-paper-2: oklch(96% 0.009 145);
+  --color-paper-3: oklch(93% 0.012 145);
+  --color-rule: oklch(88% 0.012 145);
+  --color-rule-2: oklch(78% 0.014 145);
+  --color-muted: oklch(50% 0.014 145);
+  --color-neutral: oklch(38% 0.016 145);
+  --color-ink-2: oklch(29% 0.018 145);
+  --color-ink: oklch(18% 0.018 145);
+  --color-accent: oklch(80% 0.18 126);
+  --color-accent-soft: oklch(94% 0.055 126);
+  --color-accent-ink: oklch(18% 0.018 145);
+  --color-focus: oklch(58% 0.20 130);
+  --color-success: oklch(46% 0.13 145);
+  --color-success-soft: oklch(94% 0.035 145);
+  --color-warning: oklch(63% 0.14 72);
+  --color-warning-soft: oklch(95% 0.035 72);
+  --color-danger: oklch(55% 0.19 28);
+  --color-danger-soft: oklch(95% 0.025 28);
+  --color-overlay: oklch(18% 0.018 145 / 0.38);
+  --color-shadow: oklch(18% 0.018 145 / 0.08);
+
+  --font-display: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "PingFang SC", "Microsoft YaHei", "Avenir Next", sans-serif;
+  --font-outlier: "SFMono-Regular", "SF Mono", Menlo, monospace;
+  --display-weight: 700;
+  --display-style: normal;
+  --tracking-display: -0.025em;
+  --tracking-label: 0.08em;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-md: 1.125rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 1.875rem;
+  --text-display: clamp(1.875rem, 2.4vw, 2.5rem);
+
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6rem;
+
+  --rule-hair: 1px;
+  --rule-fine: 2px;
+  --radius-card: 0.625rem;
+  --radius-pill: 999px;
+  --radius-input: 0.5rem;
+  --control-height: 2.75rem;
+  --rail-width: 11.5rem;
+  --header-height: 3.5rem;
+  --content-max: 92rem;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+
+  --shadow-card: 0 1px 2px var(--color-shadow);
+  --z-base: 1;
+  --z-raised: 10;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-sticky-nav: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+}

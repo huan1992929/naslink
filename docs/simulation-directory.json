@@ -1,0 +1,77 @@
+{
+  "departments": [
+    {
+      "id": "dept-design",
+      "name": "设计中心",
+      "parent_id": "root"
+    },
+    {
+      "id": "dept-sales",
+      "name": "市场销售部",
+      "parent_id": "root"
+    },
+    {
+      "id": "dept-marketing",
+      "name": "市场部",
+      "parent_id": "root"
+    }
+  ],
+  "users": [
+    {
+      "source_type": "dingtalk",
+      "subject": "union:zhangsan",
+      "user_id": "dt-zhangsan",
+      "union_id": "zhangsan",
+      "name": "张三",
+      "employee_no": "zhangsan",
+      "email": "zhangsan@example.com",
+      "department_ids": ["dept-sales"],
+      "leader_department_ids": ["dept-sales"],
+      "active": true
+    },
+    {
+      "source_type": "dingtalk",
+      "subject": "union:lisi",
+      "user_id": "dt-lisi",
+      "union_id": "lisi",
+      "name": "李四",
+      "employee_no": "E1002",
+      "email": "lisi@example.com",
+      "department_ids": ["dept-marketing"],
+      "active": true
+    },
+    {
+      "source_type": "dingtalk",
+      "subject": "union:wangwu",
+      "user_id": "dt-wangwu",
+      "union_id": "wangwu",
+      "name": "王五",
+      "employee_no": "wangwu",
+      "email": "wangwu@example.com",
+      "department_ids": ["dept-design"],
+      "active": false
+    },
+    {
+      "source_type": "dingtalk",
+      "subject": "union:zhaoliu",
+      "user_id": "dt-zhaoliu",
+      "union_id": "zhaoliu",
+      "name": "赵六",
+      "employee_no": "zhaoliu",
+      "email": "zhaoliu@example.com",
+      "department_ids": ["dept-sales"],
+      "active": true
+    },
+    {
+      "source_type": "dingtalk",
+      "subject": "union:new-employee",
+      "user_id": "dt-new-employee",
+      "union_id": "new-employee",
+      "name": "新员工",
+      "employee_no": "naslink_poc_003",
+      "email": "new.employee@example.com",
+      "department_ids": ["dept-design"],
+      "active": true
+    }
+  ]
+}

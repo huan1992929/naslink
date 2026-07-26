@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NASLink License Center</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%23091113'/%3E%3Cpath d='M15 45V19h7l20 17V19h7v26h-7L22 28v17z' fill='%23b8f34a'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header><div class="mark">NL</div><div><strong>NASLINK</strong><small>LICENSE CONTROL CENTER</small></div><span id="runtime">正在检查服务</span><button id="lock" type="button">锁定</button></header>
+  <main>
+    <section class="hero"><p>COMMERCIAL CONTROL PLANE</p><h1>授权中心</h1><div class="metrics"><article><b id="customerCount">0</b><span>客户</span></article><article><b id="codeCount">0</b><span>激活码</span></article><article><b id="deviceCount">0</b><span>设备</span></article><article><b id="licenseCount">0</b><span>License</span></article></div></section>
+    <section class="grid">
+      <form id="customerForm" class="card"><p>01 / CUSTOMER</p><h2>新增客户</h2><label>客户名称<input id="customerName" required></label><label>联系人 / 邮箱<input id="customerContact"></label><button>保存客户</button></form>
+      <form id="codeForm" class="card"><p>02 / ACTIVATION</p><h2>生成激活码</h2><label>客户<select id="codeCustomer" required></select></label><div class="two"><label>版本<select id="edition"><option value="standard">标准版</option><option value="professional">专业版</option><option value="enterprise">企业版</option></select></label><label>用户上限<input id="maxUsers" type="number" min="1" value="300"></label><label>有效天数<input id="validDays" type="number" min="0" value="365"><small>0 = 永久</small></label><label>可激活设备数<input id="maxActivations" type="number" min="1" value="1"></label></div><label>功能<input id="features" value="sso,directory,matching,sync,events"></label><button>生成一次性展示的激活码</button></form>
+    </section>
+    <section id="reveal" class="reveal hidden"><span>新激活码，仅显示本次</span><strong id="newCode"></strong><button id="copyCode" type="button">复制</button></section>
+    <section class="card table-card"><div class="head"><div><p>03 / LICENSE LEDGER</p><h2>授权台账</h2></div><button id="refresh" class="secondary" type="button">刷新</button></div><div class="table"><table><thead><tr><th>客户 / 版本</th><th>License</th><th>设备</th><th>用户</th><th>到期</th><th>状态</th><th>操作</th></tr></thead><tbody id="licenseRows"></tbody></table></div></section>
+    <section class="card table-card"><div class="head"><div><p>04 / ACTIVATION CODES</p><h2>激活码库存</h2></div></div><div class="table"><table><thead><tr><th>客户</th><th>尾号</th><th>版本</th><th>额度</th><th>设备</th><th>状态</th></tr></thead><tbody id="codeRows"></tbody></table></div></section>
+  </main>
+  <dialog id="auth"><form id="authForm" method="dialog"><p>OWNER ACCESS</p><h2>授权中心管理认证</h2><input type="hidden" name="username" value="naslink-owner" autocomplete="username"><label>管理令牌<input id="adminToken" type="password" minlength="16" autocomplete="current-password" required autofocus></label><button>进入控制台</button><small>令牌只保存在当前浏览器会话。</small></form></dialog>
+  <dialog id="actionDialog"><form id="actionForm" method="dialog"><p id="actionEyebrow">LICENSE ACTION</p><h2 id="actionTitle">授权操作</h2><label id="actionLabel">参数<input id="actionValue" required></label><div><button value="cancel" class="secondary">取消</button><button id="actionSubmit" value="default">确认</button></div></form></dialog>
+  <div id="toast"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

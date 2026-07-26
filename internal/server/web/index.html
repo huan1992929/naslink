@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>NASLink · Identity Bridge</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d1215'/%3E%3Cpath d='M16 45V19h7l18 17V19h7v26h-7L23 28v17z' fill='%23d7ff43'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/tokens.css">
+  <link rel="stylesheet" href="/vendor/tabulator.min.css">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/utilities.css">
+</head>
+<body>
+  <header class="masthead">
+    <button id="mobileNavToggle" class="mobile-nav-toggle" type="button" aria-label="打开管理导航" aria-expanded="false" aria-controls="adminRail"><span></span><span></span><span></span><b>菜单</b></button>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div><strong>NASLINK</strong><small>IDENTITY BRIDGE / DSM 7</small></div>
+    </div>
+    <nav id="adminRail" class="top-nav" aria-label="管理导航">
+      <button class="nav-item active" data-target="overview"><b>01</b><span>总览</span></button>
+      <button class="nav-item" data-target="connections"><b>02</b><span>连接配置</span></button>
+      <button class="nav-item" data-target="directory"><b>03</b><span>DSM 盘点</span></button>
+      <button class="nav-item" data-target="organization"><b>04</b><span>组织同步</span></button>
+      <button class="nav-item" data-target="identity"><b>05</b><span>账号匹配</span></button>
+      <button class="nav-item" data-target="sync"><b>06</b><span>同步中心</span></button>
+      <button class="nav-item" data-target="system"><b>07</b><span>系统授权</span></button>
+    </nav>
+    <span class="safety-lock">默认只读</span>
+    <div class="runtime"><i id="runtimeDot"></i><span id="runtimeText">正在检查服务</span></div>
+    <button id="logoutButton" class="text-button hidden" type="button">退出</button>
+  </header>
+
+  <main class="shell">
+    <section class="workspace">
+      <section id="overview" class="panel active">
+        <div class="page-chrome">
+          <div class="page-title"><h1>系统总览</h1><p>先盘点、再匹配、预览后同步，保留现有账号、文件与权限关系。</p></div>
+          <div class="page-actions"><div class="status-chip"><span></span>服务状态实时检查</div></div>
+        </div>
+        <div class="panel-content">
+          <div class="metric-grid">
+            <article><span>DSM 用户</span><strong id="metricUsers">—</strong><small>最近一次只读盘点</small></article>
+            <article><span>DSM 群组</span><strong id="metricGroups">—</strong><small>本地群组</small></article>
+            <article><span>已确认绑定</span><strong id="metricBindings">0</strong><small>平台身份到 DSM 账号</small></article>
+            <article><span id="sourceMetricLabel">身份源用户</span><strong id="metricSourceUsers">—</strong><small>最近通讯录快照</small></article>
+          </div>
+          <section class="workflow-card" aria-labelledby="workflowTitle">
+            <div class="workflow-copy"><h2 id="workflowTitle">当前接入路径</h2><p>每一步都可独立检查，写操作只在同步预览确认后发生。</p></div>
+            <ol class="flow-strip">
+              <li><b>1</b><span id="flowSourceLabel">企业身份认证</span><small>取得稳定身份</small></li>
+              <li><b>2</b><span>账号绑定</span><small>映射 DSM 用户名</small></li>
+              <li><b>3</b><span>OIDC 签发</span><small>输出标准 ID Token</small></li>
+              <li><b>4</b><span>Drive Web</span><small>建立 DSM 原生会话</small></li>
+            </ol>
+          </section>
+          <div class="overview-notes"><article><h3>对现有账号安全</h3><p>优先绑定历史账号，不自动改名，不迁移文件。</p></article><article><h3>对人员变动可控</h3><p>入职、调岗与离职先生成计划，再由管理员确认。</p></article></div>
+        </div>
+      </section>
+
+      <section id="connections" class="panel">
+        <div class="page-chrome">
+          <div class="page-title"><h2>连接配置</h2><p>配置当前 DSM，并选择登录、通讯录和人员变动使用的身份源。</p></div>
+          <div class="source-tabs page-context-tabs" role="group" aria-label="选择主身份源">
+            <button id="sourceTabDingTalk" data-source="dingtalk" type="button" aria-pressed="true">钉钉</button>
+            <button id="sourceTabWeCom" data-source="wecom" type="button" aria-pressed="false">企业微信</button>
+          </div>
+          <div class="page-actions"><button id="saveSettings" class="primary-button" type="button">保存配置</button></div>
+          <select id="identitySource" class="sr-only" tabindex="-1" aria-hidden="true"><option value="dingtalk">钉钉</option><option value="wecom">企业微信</option></select>
+        </div>
+        <div class="panel-content">
+        <form id="settingsForm" autocomplete="off">
+          <div class="config-grid">
+            <fieldset id="dsmConfigPanel">
+              <legend><span>DSM</span><small>目标存储系统</small></legend>
+              <div class="inner-tabs" role="group" aria-label="DSM 配置分类">
+                <button id="dsmTabConnection" type="button" aria-pressed="true">管理连接</button>
+                <button id="dsmTabOIDC" type="button" aria-pressed="false">Drive 免登</button>
+              </div>
+              <div id="dsmConnectionFields" class="dsm-config-section">
+                <p class="field-note">SPK 默认通过 <strong>127.0.0.1:5001</strong> 连接本机；仅 DSM 修改过 HTTPS 端口时调整。浏览器登录态不会传入套件，管理服务账号只需保存一次。</p>
+                <div class="form-pair"><label>DSM 本机地址（自动）<input id="dsmBaseURL" placeholder="https://127.0.0.1:5001"></label><label>DSM 管理服务账号<input id="dsmAccount" placeholder="naslink_service" autocomplete="off"></label></div>
+                <label>密码<input id="dsmPassword" type="password" autocomplete="new-password" placeholder="留空保持原值"></label>
+                <div class="form-pair"><label class="check"><input id="dsmInsecure" type="checkbox"><span>允许本机回环自签名证书</span></label><label>UAT 安全前缀<input id="mutationPrefix" value="naslink_poc_"><small>只用于隔离写入测试；正式同步账号来自身份源。</small></label></div>
+                <button id="probeDSM" class="secondary-button" type="button">连接并只读盘点</button>
+              </div>
+              <div id="dsmOIDCFields" class="dsm-config-section hidden">
+                <p class="field-note">NASLink 作为 OIDC 身份提供方，DSM 使用这些参数建立官方 SSO 会话，并进入 Synology Drive Web。</p>
+                <label>Issuer 公共地址<input id="oidcIssuer" placeholder="https://naslink.example.com"></label>
+                <div class="form-pair"><label>DSM Client ID<input id="oidcClientID" placeholder="naslink-dsm"></label><label>DSM Client Secret<input id="oidcClientSecret" type="password" autocomplete="new-password" placeholder="留空保持原值"></label></div>
+                <label>DSM Redirect URI<input id="oidcRedirectURI" placeholder="从 DSM SSO 设置页复制"></label>
+                <div class="copy-line compact"><span>Well-known URL</span><code id="discoveryURL">保存 Issuer 后生成</code></div>
+              </div>
+            </fieldset>
+            <fieldset id="dingtalkConfigPanel" class="source-config-panel">
+              <legend><span>钉钉</span><small>企业内部应用</small></legend>
+              <div class="inner-tabs" role="tablist" aria-label="钉钉接入配置">
+                <button id="dingTabCredentials" role="tab" aria-selected="true" type="button">应用凭据</button>
+                <button id="dingTabPermissions" role="tab" aria-selected="false" type="button">权限检测</button>
+                <button id="dingTabGuide" role="tab" aria-selected="false" type="button">开通指引</button>
+              </div>
+              <div id="dingCredentialsView" class="tab-view compact-form-view">
+                <div class="form-pair"><label>Client ID / AppKey<input id="dingClientID" placeholder="dingxxxxxxxx"></label><label>Client Secret<input id="dingClientSecret" type="password" autocomplete="new-password" placeholder="留空保持原值"></label></div>
+                <label>授权地址<input id="dingAuthURL" value="https://login.dingtalk.com/oauth2/auth"></label>
+                <label>API 地址<input id="dingAPIBase" value="https://api.dingtalk.com"></label>
+                <label>事件接入令牌<input id="dingEventToken" type="password" autocomplete="new-password" placeholder="留空保持原值"></label>
+                <button id="testIdentity" class="secondary-button" type="button">验证应用凭据</button>
+              </div>
+              <div id="dingPermissionsView" class="tab-view hidden">
+                <div class="diagnostic-head">
+                  <div><strong id="dingDiagnosticSummary">尚未检测</strong><small id="dingDiagnosticMeta">填写或保存凭据后执行只读检测</small></div>
+                  <button id="diagnoseDingTalk" class="secondary-button" type="button">检测权限</button>
+                </div>
+                <div id="dingPermissionChecks" class="permission-checks" aria-live="polite"></div>
+                <div class="visibility-metrics" aria-label="钉钉可见范围">
+                  <span><small>可见部门</small><b id="dingVisibleDepartments">—</b></span>
+                  <span><small>可见员工</small><b id="dingVisibleUsers">—</b></span>
+                  <span><small>在职员工</small><b id="dingActiveUsers">—</b></span>
+                </div>
+                <p class="diagnostic-note">检测只读取钉钉通讯录，不保存快照、不修改 DSM。通过检测不等于已订阅人员变动事件。</p>
+              </div>
+              <div id="dingGuideView" class="tab-view hidden">
+                <ol class="setup-steps">
+                  <li><b>1</b><div><strong>创建企业内部应用</strong><small>在钉钉开发者后台创建应用，复制 Client ID 与 Client Secret。</small></div><a href="https://open-dev.dingtalk.com/" target="_blank" rel="noopener">打开后台</a></li>
+                  <li><b>2</b><div><strong>申请通讯录权限</strong><small>必须开通 qyapi_get_department_list 和 qyapi_get_department_member；fieldEmail、fieldMobile 可提高历史账号匹配准确率。</small></div></li>
+                  <li><b>3</b><div><strong>设置应用可见范围</strong><small>只同步需要使用群晖的部门。检测结果中的部门、员工数量应与该范围相符。</small></div></li>
+                  <li><b>4</b><div><strong>订阅人员变动事件</strong><small>启用 Stream 模式，并订阅入职、修改、离职及部门新增、修改、删除事件。</small></div></li>
+                  <li><b>5</b><div><strong>发布应用版本</strong><small>钉钉后台提示有待发布修改时，创建并发布应用版本，否则权限、范围或事件设置可能不生效。</small></div></li>
+                  <li><b>6</b><div><strong>检测后保存</strong><small>先在“权限检测”确认可见范围，再保存配置并前往组织同步生成通讯录快照。</small></div></li>
+                </ol>
+              </div>
+            </fieldset>
+            <fieldset id="wecomConfigPanel" class="source-config-panel hidden">
+              <legend><span>企业微信</span><small>自建应用与通讯录</small></legend>
+              <div class="inner-tabs" role="tablist" aria-label="企业微信配置分类">
+                <button id="wecomTabCredentials" role="tab" aria-selected="true" type="button">应用凭据</button>
+                <button id="wecomTabAccess" role="tab" aria-selected="false" type="button">免登入口</button>
+                <button id="wecomTabCallback" role="tab" aria-selected="false" type="button">通讯录回调</button>
+              </div>
+              <div id="wecomCredentialsView" class="tab-view compact-form-view">
+                <div class="form-pair"><label>Corp ID<input id="wecomCorpID" placeholder="wwxxxxxxxx"></label><label>Agent ID<input id="wecomAgentID" placeholder="1000002"></label></div>
+                <label>Secret<input id="wecomSecret" type="password" autocomplete="new-password" placeholder="留空保持原值"></label>
+                <label>API 地址<input id="wecomAPIBase" value="https://qyapi.weixin.qq.com"></label>
+                <button id="testWeComIdentity" class="secondary-button source-test-proxy" type="button">验证企业微信连接</button>
+              </div>
+              <div id="wecomAccessView" class="tab-view compact-form-view hidden">
+                <label>桌面扫码授权地址<input id="wecomAuthURL" value="https://open.work.weixin.qq.com/wwopen/sso/qrConnect"></label>
+                <label>应用内静默授权地址<input id="wecomInAppAuthURL" value="https://open.weixin.qq.com/connect/oauth2/authorize"></label>
+                <label>Synology Drive Web 地址<input id="wecomDriveWebURL" placeholder="https://drive.example.com"></label>
+                <div class="copy-line"><span>自建应用主页</span><code id="wecomLaunchURL">保存 Issuer 后生成</code><button id="copyWeComLaunch" class="text-button" type="button">复制</button></div>
+              </div>
+              <div id="wecomCallbackView" class="tab-view compact-form-view hidden">
+                <div class="form-pair"><label>回调 Token<input id="wecomCallbackToken" type="password" autocomplete="new-password" placeholder="留空保持原值"></label><label>EncodingAESKey<input id="wecomCallbackAESKey" type="password" autocomplete="new-password" placeholder="43 位，留空保持原值"></label></div>
+                <div class="copy-line"><span>通讯录回调</span><code id="wecomCallbackURL">保存 Issuer 后生成</code></div>
+              </div>
+            </fieldset>
+          </div>
+        </form>
+        </div>
+      </section>
+
+      <section id="directory" class="panel">
+        <div class="page-chrome">
+          <div class="page-title"><h2>DSM 盘点</h2><p>只读检查现有用户、群组与 API 能力，不修改 DSM。</p></div>
+          <div id="directoryContextHost" class="directory-context-host hidden">
+            <div id="directoryAccountTools" class="directory-context-tools">
+              <details class="capability-panel" id="capabilityPanel" data-state="loading">
+                <summary>
+                  <span class="capability-title"><i aria-hidden="true"></i>接口能力</span>
+                  <strong id="capabilitySummary" aria-live="polite">正在读取</strong>
+                  <span class="capability-disclosure" aria-hidden="true"><span class="when-closed">详情</span><span class="when-open">收起</span></span>
+                </summary>
+                <div class="capability-row" id="capabilityRow"></div>
+              </details>
+              <label class="directory-quick-search"><span class="sr-only">搜索账号</span><input id="dsmUserSearch" type="search" aria-label="搜索账号" placeholder="搜索用户名、邮箱或描述"></label>
+              <label class="directory-quick-filter"><span class="sr-only">账号状态</span><select id="dsmUserStatusFilter" aria-label="账号状态"><option value="">全部状态</option><option value="enabled">启用</option><option value="disabled">已禁用</option></select></label>
+              <span id="dsmUserGridCount" class="grid-count">0 个账号</span>
+            </div>
+            <div id="directoryGroupTools" class="directory-context-tools hidden">
+              <label class="directory-quick-search"><span class="sr-only">搜索群组</span><input id="dsmGroupSearch" type="search" aria-label="搜索群组" placeholder="搜索群组名或描述"></label>
+              <span id="dsmGroupGridCount" class="grid-count">0 个群组</span>
+            </div>
+          </div>
+          <div class="page-tabs" role="tablist" aria-label="DSM 盘点视图"><button id="directoryTabAccounts" role="tab" aria-selected="true" type="button">账号盘点</button><button id="directoryTabGroups" role="tab" aria-selected="false" type="button">群组盘点</button><button id="directoryTabUAT" role="tab" aria-selected="false" type="button">UAT 写入验证</button></div>
+          <div class="page-actions"><button id="refreshDirectory" class="primary-button" type="button">重新盘点</button></div>
+        </div>
+        <div class="panel-content">
+        <div id="probeEmpty" class="empty-state"><div class="empty-glyph" aria-hidden="true">DSM</div><div><h3>尚未读取 DSM</h3><p>先完成 DSM 管理连接，再执行一次只读盘点。</p></div><button id="goConnections" class="secondary-button" type="button">打开连接配置</button></div>
+        <div id="probeResult" class="page-body hidden">
+          <div id="directoryAccountsView" class="tab-view scroll-column">
+            <div id="dsmUserGrid" class="data-grid" aria-label="DSM 账号盘点表"></div>
+          </div>
+          <div id="directoryGroupsView" class="tab-view scroll-column hidden">
+            <div id="dsmGroupGrid" class="data-grid" aria-label="DSM 群组盘点表"></div>
+          </div>
+          <div id="directoryUATView" class="tab-view hidden">
+            <div class="operation-panel danger-zone"><div class="danger-content"><p>只能创建或修改 <code id="prefixHint">naslink_poc_</code> 前缀账号。本版本不提供删除功能。</p><div class="mutation-grid"><label>测试用户名<input id="testUsername" value="naslink_poc_001"></label><label>测试密码<input id="testPassword" type="password" placeholder="至少 12 位"></label><label>描述<input id="testDescription" value="NASLink POC test account"></label><label>邮箱<input id="testEmail" placeholder="可选"></label></div><div class="button-row"><button id="previewCreate" class="secondary-button" type="button">仅预览</button><button id="applyCreate" class="danger-button" type="button">确认后创建</button></div></div></div>
+          </div>
+        </div>
+        </div>
+      </section>
+
+      <section id="organization" class="panel">
+        <div class="page-chrome">
+          <div class="page-title"><h2>组织同步</h2><p>选择受管部门，查看员工目录与 DSM 群组映射。</p></div>
+          <div id="organizationMappingTools" class="page-toolbar-context organization-summary-tools" aria-label="组织同步摘要">
+            <span class="toolbar-metric"><small>全部部门</small><b id="sourceDepartmentCount">0</b></span>
+            <span class="toolbar-metric"><small>在职用户</small><b id="sourceActiveCount">0</b></span>
+            <span class="toolbar-metric"><small>受管范围</small><b id="sourceManagedCount">0</b></span>
+            <span class="toolbar-metric toolbar-metric-wide"><small>快照时间</small><b id="sourceDirectoryAt">尚未同步</b></span>
+            <span class="toolbar-safety-note"><strong>默认不写入 DSM</strong><span>仅同步已启用部门，负责人不自动成为管理员</span></span>
+          </div>
+          <div class="page-tabs" role="tablist" aria-label="组织同步视图"><button id="organizationTabMapping" role="tab" aria-selected="true" type="button">部门范围</button><button id="organizationTabUsers" role="tab" aria-selected="false" type="button">员工目录</button><button id="organizationTabImport" role="tab" aria-selected="false" type="button">离线导入</button></div>
+          <div class="page-actions button-row"><button id="recalculateMatches" class="secondary-button" type="button">重新计算</button><button id="refreshIdentityDirectory" class="primary-button" type="button">拉取通讯录</button></div>
+        </div>
+        <div class="panel-content">
+        <div id="organizationMappingView" class="tab-view scroll-column">
+          <div class="grid-toolbar"><label class="grid-search"><span>搜索部门</span><input id="departmentSearch" type="search" placeholder="部门名或 ID"></label><label class="grid-filter"><span>范围</span><select id="departmentScopeFilter"><option value="">全部部门</option><option value="managed">已启用</option><option value="unmanaged">未启用</option></select></label><span id="departmentGridCount" class="grid-count">0 个部门</span></div>
+          <div id="departmentGrid" class="data-grid" aria-label="部门同步范围表"></div>
+        </div>
+        <div id="organizationUsersView" class="tab-view scroll-column hidden">
+          <div class="grid-toolbar"><label class="grid-search"><span>搜索员工</span><input id="sourceUserSearch" type="search" placeholder="姓名、工号或邮箱"></label><label class="grid-filter"><span>范围</span><select id="sourceUserScopeFilter"><option value="">全部员工</option><option value="managed">受管范围</option><option value="unmanaged">未选范围</option><option value="inactive">离职/停用</option></select></label><span id="sourceUserGridCount" class="grid-count">0 人</span></div>
+          <div id="sourceUserGrid" class="data-grid" aria-label="身份源员工目录表"></div>
+        </div>
+        <div id="organizationImportView" class="tab-view hidden"><div class="operation-panel import-zone"><p>用于无身份源实机时的离线演练，格式为 <code>{"departments":[],"users":[]}</code>。</p><textarea id="directoryJSON" rows="7" spellcheck="false"></textarea><button id="importDirectory" class="secondary-button" type="button">导入通讯录快照</button></div></div>
+        </div>
+      </section>
+
+      <section id="identity" class="panel">
+        <div class="page-chrome">
+          <div class="page-title"><h2>账号匹配</h2><p>优先绑定已有账号，避免重复 Home 目录与历史文件失联。</p></div>
+          <div id="identityMatchTools" class="page-toolbar-context identity-match-tools" aria-label="账号匹配筛选">
+            <label class="directory-quick-search"><span class="sr-only">搜索匹配</span><input id="matchSearch" type="search" aria-label="搜索匹配" placeholder="搜索员工、工号或 DSM 用户名"></label>
+            <label class="directory-quick-filter"><span class="sr-only">匹配状态</span><select id="matchStatusFilter" aria-label="匹配状态"><option value="">全部状态</option><option value="confirmed">已确认</option><option value="auto">高信匹配</option><option value="review">待确认</option><option value="conflict">冲突</option><option value="unmatched">未匹配</option></select></label>
+            <span id="matchGridCount" class="grid-count">0 条匹配</span>
+          </div>
+          <div class="page-tabs" role="tablist" aria-label="账号匹配视图"><button id="identityTabMatches" role="tab" aria-selected="true" type="button">匹配结果</button><button id="identityTabBindings" role="tab" aria-selected="false" type="button">人工绑定</button></div>
+        </div>
+        <div class="panel-content">
+        <div id="identityMatchesView" class="tab-view scroll-column"><div id="matchGrid" class="data-grid" aria-label="账号匹配表"></div></div>
+        <div id="identityBindingsView" class="tab-view hidden"><div class="binding-layout"><form id="bindingForm" class="binding-form"><h3>新增或更新绑定</h3><p>钉钉通常为 <code>union:xxxx</code>，企业微信为 <code>userid:xxxx</code>。确认后保存为稳定映射。</p><label>身份源稳定标识<input id="bindingSubject" placeholder="union:xxxx / userid:xxxx"></label><label>DSM 用户名<input id="bindingUsername" placeholder="zhangsan"></label><div class="form-pair"><label>显示姓名<input id="bindingName" placeholder="张三"></label><label>企业邮箱<input id="bindingEmail" placeholder="zhangsan@example.com"></label></div><button id="saveBinding" class="primary-button" type="button">确认永久绑定</button></form><div class="binding-list"><div class="list-head"><span>已确认绑定</span><b id="bindingCount">0</b></div><div id="bindingRows"></div></div></div></div>
+        </div>
+      </section>
+
+      <section id="sync" class="panel">
+        <div class="page-chrome">
+          <div class="page-title"><h2>同步工作台</h2><p>从准备条件到 DSM 结果复核，在一个页面完成。</p></div>
+          <div class="page-tabs" role="tablist" aria-label="同步工作台视图"><button id="syncTabPreview" role="tab" aria-selected="true" type="button">待办与执行</button><button id="syncTabPolicy" role="tab" aria-selected="false" type="button">自动化策略</button><button id="syncTabHistory" role="tab" aria-selected="false" type="button">运行记录</button></div>
+          <div class="page-actions"><button id="previewSync" class="primary-button" type="button">生成同步计划</button></div>
+        </div>
+        <div class="panel-content">
+        <div id="syncPreviewView" class="tab-view">
+          <ol id="syncFlowSteps" class="sync-flow" aria-label="同步准备进度">
+            <li id="syncStepDirectory"><b>1</b><span>通讯录</span><small>尚未拉取</small></li>
+            <li id="syncStepScope"><b>2</b><span>部门范围</span><small>尚未选择</small></li>
+            <li id="syncStepMatch"><b>3</b><span>账号匹配</span><small>尚未确认</small></li>
+            <li id="syncStepApply"><b>4</b><span>DSM 同步</span><small>等待计划</small></li>
+          </ol>
+          <div id="syncReadiness" class="sync-readiness" aria-live="polite"></div>
+          <div id="syncEmpty" class="empty-state"><div><h3 id="syncEmptyTitle">准备生成同步计划</h3><p id="syncEmptyDescription">系统会先对比通讯录、绑定和 DSM 当前状态，不会立即写入。</p></div><button id="previewSyncInline" class="secondary-button" type="button">检查并生成计划</button></div>
+          <div id="syncResult" class="hidden"><div class="sync-summary"><div><span id="syncResultState">待管理员确认</span><strong id="syncSummary"></strong></div><div class="sync-summary-actions"><button id="viewDSMResult" class="secondary-button hidden" type="button">查看 DSM 结果</button><button id="applySync" class="danger-button" type="button">执行并自动复核</button></div></div><div class="table-wrap"><table><thead><tr><th>动作</th><th>DSM 目标</th><th>原因</th><th>风险</th><th>群组变化</th><th>验证结果</th></tr></thead><tbody id="syncActionRows"></tbody></table></div></div>
+        </div>
+        <div id="syncPolicyView" class="tab-view hidden"><div class="policy-grid"><label>新账号命名规则<select id="usernameRule"><option value="employee_no">工号</option><option value="email_prefix">企业邮箱前缀</option><option value="user_id">平台 User ID</option></select></label><label>用户名前缀<input id="usernamePrefix" placeholder="可选，例如 andao_"></label><label>自动匹配阈值<input id="autoBindScore" type="number" min="60" max="100" value="100"></label><label>随机密码长度<input id="randomPasswordLength" type="number" min="16" max="128" value="24"></label><label class="check"><input id="createMissing" type="checkbox"><span>为未匹配在职员工创建账号</span></label><label class="check"><input id="disableDeparted" type="checkbox"><span>离职员工禁用 DSM 账号</span></label><label class="check"><input id="removeOldGroups" type="checkbox"><span>移出已取消的受管部门群组</span></label><label class="check"><input id="autoApplyEvents" type="checkbox"><span>人员变动事件自动执行（高风险）</span></label><label class="check"><input id="scheduleEnabled" type="checkbox"><span>定时拉取并生成待确认计划</span></label><label>校准间隔（分钟）<input id="scheduleInterval" type="number" min="15" value="1440"></label><button id="savePolicy" class="secondary-button" type="button">保存同步策略</button></div></div>
+        <div id="syncHistoryView" class="tab-view hidden"><div class="run-history"><div class="list-head"><span>最近同步记录</span></div><div id="syncRunRows"></div></div></div>
+        </div>
+      </section>
+
+      <section id="system" class="panel">
+        <div class="page-chrome">
+          <div class="page-title"><h2>系统授权</h2><p>查看授权状态、激活方式与插件审计记录。</p></div>
+          <div class="page-tabs" role="tablist" aria-label="系统授权视图"><button id="systemTabStatus" role="tab" aria-selected="true" type="button">授权状态</button><button id="systemTabActivate" role="tab" aria-selected="false" type="button">激活授权</button><button id="systemTabAudit" role="tab" aria-selected="false" type="button">审计日志</button></div>
+          <div class="page-actions"><a href="/api/v1/backup" class="secondary-button">下载状态备份</a></div>
+        </div>
+        <div class="panel-content">
+        <div id="systemStatusView" class="tab-view"><div class="license-card"><div><span id="licenseMode">TRIAL</span><h3 id="licenseEdition">试用版</h3><p id="licenseReason">30 天本地试用</p></div><dl><dt>设备指纹</dt><dd id="licenseDevice">—</dd><dt>用户上限</dt><dd id="licenseUsers">—</dd><dt>到期时间</dt><dd id="licenseExpiry">—</dd></dl></div></div>
+        <div id="systemActivateView" class="tab-view hidden"><div class="activation-panel"><div class="inner-tabs" role="tablist" aria-label="授权激活方式"><button id="activationTabOnline" role="tab" aria-selected="true" type="button">在线激活</button><button id="activationTabOffline" role="tab" aria-selected="false" type="button">离线 License</button></div><div id="activationOnlineView" class="tab-view"><h3>连接独立授权中心</h3><div class="form-pair"><label>授权中心地址<input id="licenseCenterURL" placeholder="https://license.example.com"></label><label>激活码<input id="activationCode" type="password" placeholder="NASL-XXXX-XXXX-XXXX"></label></div><button id="activateOnline" class="primary-button" type="button">连接授权中心激活</button></div><div id="activationOfflineView" class="tab-view hidden"><h3>导入离线授权文件</h3><p>纯内网环境可粘贴授权中心签发的 JSON。插件只保存公钥并在本地验签。</p><textarea id="licenseJSON" rows="7" spellcheck="false"></textarea><button id="installLicense" class="secondary-button" type="button">导入离线 License</button></div></div></div>
+        <div id="systemAuditView" class="tab-view hidden"><div class="audit-list"><div class="list-head"><span>审计日志</span><b id="auditCount">0</b></div><div id="auditRows"></div></div></div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div id="authLayer" class="auth-layer hidden"><form id="authForm" class="auth-card"><div class="auth-brand"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><span>NASLink 本地管理</span></div><h2 id="authTitle">初始化 NASLink</h2><p id="authDescription">设置一个仅用于本插件管理后台的密码。</p><input class="sr-only" name="username" value="naslink-admin" autocomplete="username" tabindex="-1" aria-hidden="true"><label>管理员密码<input id="adminPassword" type="password" minlength="12" autocomplete="current-password" required></label><button class="primary-button" type="submit">进入控制台</button><small>密码不会发送到外部服务。</small></form></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="confirmDialog"><form method="dialog"><span class="dialog-mark">DSM 写操作</span><h3>确认写入测试群晖</h3><p>请输入确认词 <code>APPLY NASLINK POC</code></p><input id="confirmationText" autocomplete="off"><div><button value="cancel" class="text-button">取消</button><button id="confirmApply" value="default" class="danger-button">执行测试写入</button></div></form></dialog>
+  <dialog id="syncConfirmDialog"><form method="dialog"><span class="dialog-mark">生命周期写操作</span><h3>确认执行并复核</h3><p>请输入 <code>APPLY NASLINK SYNC</code>。系统执行后会自动重新盘点；本计划不删除账号或文件。</p><input id="syncConfirmationText" autocomplete="off"><div><button value="cancel" class="text-button">取消</button><button id="confirmSyncApply" value="default" class="danger-button">执行并复核</button></div></form></dialog>
+  <script src="/vendor/tabulator.min.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>
