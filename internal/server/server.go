@@ -766,19 +766,7 @@ func connectionState(ok bool) string {
 }
 
 func (s *Server) driveReadiness(w http.ResponseWriter, _ *http.Request) {
-	public := s.manager.Public()
-	issues := []string{}
-	if public.OIDC.Issuer == "" || public.OIDC.ClientID == "" || !public.OIDC.HasClientSecret {
-		issues = append(issues, "尚未完成 NASLink 与 DSM 的 Drive 免登录配置")
-	}
-	if public.IdentitySource == "wecom" && public.WeCom.DriveWebURL == "" {
-		issues = append(issues, "尚未填写 Synology Drive Web 地址")
-	}
-	status := "ready"
-	if len(issues) > 0 {
-		status = "blocked"
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": status, "title": "Drive 免登录", "message": valueOrReason(firstMessage(issues), "Drive 免登录配置已就绪。"), "blocking_reasons": issues, "recommended_action": valueOrReason(firstMessage(issues), "测试 Drive 免登录"), "counts": map[string]int{}})
+	writeJSON(w, http.StatusOK, s.driveAssessment())
 }
 
 func firstMessage(values []string) string {
@@ -789,23 +777,64 @@ func firstMessage(values []string) string {
 }
 
 func (s *Server) drivePreflight(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.driveAssessment())
+}
+
+func (s *Server) driveAssessment() map[string]any {
 	public := s.manager.Public()
+	snapshot := s.store.Snapshot()
+	reasons := []string{}
 	checks := []map[string]string{
 		{"key": "issuer", "status": connectionState(public.OIDC.Issuer != ""), "message": "NASLink 公共地址"},
 		{"key": "client", "status": connectionState(public.OIDC.ClientID != "" && public.OIDC.HasClientSecret), "message": "DSM OIDC 客户端"},
 	}
+	if public.OIDC.Issuer == "" || public.OIDC.ClientID == "" || !public.OIDC.HasClientSecret {
+		reasons = append(reasons, "请先完成 NASLink 与 DSM 的 Drive 免登录配置")
+	}
 	if public.IdentitySource == "wecom" {
 		checks = append(checks, map[string]string{"key": "drive_url", "status": connectionState(public.WeCom.DriveWebURL != ""), "message": "Synology Drive Web 地址"})
+		if public.WeCom.DriveWebURL == "" {
+			reasons = append(reasons, "请填写 Synology Drive Web 地址")
+		}
 	}
-	ready := true
-	for _, check := range checks {
-		ready = ready && check["status"] == "ready"
+	driveStatus := snapshot.Onboarding.DriveServerStatus
+	if driveStatus == "" {
+		driveStatus = "unknown"
 	}
-	status := "blocked"
-	if ready {
-		status = "ready"
+	driveCheck := map[string]string{"key": "drive_server", "status": driveStatus, "message": "Synology Drive Server 运行状态"}
+	checks = append(checks, driveCheck)
+	switch driveStatus {
+	case "installed":
+	case "not_installed":
+		reasons = append(reasons, "这台群晖未安装 Synology Drive Server")
+	case "error":
+		reasons = append(reasons, "无法确认 Synology Drive Server 的运行状态")
+	default:
+		reasons = append(reasons, "尚未通过群晖运行时检查确认 Synology Drive Server 已安装且可用")
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": status, "title": "Drive 配置检查", "message": "检查只读取 NASLink 本地配置，不会发起员工登录。", "blocking_reasons": []string{}, "recommended_action": valueOrReason(map[bool]string{true: "可以测试 Drive 免登录", false: "补全缺少的 Drive 配置"}[ready], ""), "counts": map[string]int{}, "checks": checks})
+	boundActive := false
+	bindings := map[string]config.Binding{}
+	for _, binding := range public.Bindings {
+		bindings[binding.SourceSubject] = binding
+	}
+	for _, user := range snapshot.Users {
+		if binding, ok := bindings[user.Subject]; ok && user.Active && binding.DSMUsername != "" {
+			boundActive = true
+			break
+		}
+	}
+	checks = append(checks, map[string]string{"key": "test_user", "status": connectionState(boundActive), "message": "当前在职且已固定绑定的测试员工"})
+	if !boundActive {
+		reasons = append(reasons, "请先选择一名在职员工并确认其固定 DSM 账号绑定，再测试 Drive 免登录")
+	}
+	status, action := "ready", "使用已绑定的在职员工测试 Drive 免登录"
+	if driveStatus == "unknown" || driveStatus == "error" {
+		status, action = "needs_live_test", "先连接群晖并执行 Drive Server 运行时检查"
+	}
+	if len(reasons) > 0 && status != "needs_live_test" {
+		status, action = "blocked", "处理："+reasons[0]
+	}
+	return map[string]any{"status": status, "title": "Drive 配置检查", "message": valueOrReason(firstMessage(reasons), "Drive 免登录配置与运行时检查均已就绪。"), "blocking_reasons": reasons, "recommended_action": action, "counts": map[string]int{}, "checks": checks}
 }
 
 func onboardingStatus(ready bool) string {

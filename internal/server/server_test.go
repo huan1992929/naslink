@@ -222,6 +222,51 @@ func TestDiagnosticsAreSanitizedAndSyncEnableRejectsWrongPassword(t *testing.T) 
 	}
 }
 
+func TestDrivePreflightBlocksMissingDriveServerAndUnboundUser(t *testing.T) {
+	server, store := newTestServer(t)
+	defer server.Close()
+	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.Body.Close()
+	var setupBody struct {
+		CSRF string `json:"csrf_token"`
+	}
+	if err := json.NewDecoder(setup.Body).Decode(&setupBody); err != nil {
+		t.Fatal(err)
+	}
+	cookie := setup.Cookies()[0]
+	if err := store.SetDriveServerStatus("not_installed"); err != nil {
+		t.Fatal(err)
+	}
+
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/drive/preflight", bytes.NewBufferString(`{}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-CSRF-Token", setupBody.CSRF)
+	request.AddCookie(cookie)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	raw, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusOK || !bytes.Contains(raw, []byte("未安装 Synology Drive Server")) || !bytes.Contains(raw, []byte("固定 DSM 账号绑定")) {
+		t.Fatalf("missing Drive Server and unbound user were not actionable blockers: %d %s", response.StatusCode, raw)
+	}
+}
+
+func TestStalePlanComparisonRejectsChangedActionsBeforeWrites(t *testing.T) {
+	preview := []appstate.Action{{ID: "a1", Type: "create_user", Subject: "u1", DSMUsername: "alice"}}
+	changed := []appstate.Action{{ID: "a2", Type: "create_user", Subject: "u1", DSMUsername: "alice"}, {ID: "a3", Type: "disable_user", Subject: "u2", DSMUsername: "bob"}}
+	if sameSyncActions(preview, changed) {
+		t.Fatal("changed DSM plan must be rejected before executeRun is reachable")
+	}
+	if !sameSyncActions(preview, append([]appstate.Action(nil), preview...)) {
+		t.Fatal("equivalent plan should remain executable")
+	}
+}
+
 func TestAuthenticatedDirectoryImport(t *testing.T) {
 	dataDir := t.TempDir()
 	manager, err := config.NewManager(dataDir)

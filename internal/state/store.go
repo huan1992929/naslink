@@ -117,15 +117,17 @@ type AuditEvent struct {
 // deliberately separate from connection health: callers must still derive
 // whether a step can be completed from the current configuration and data.
 type Onboarding struct {
-	Version            int       `json:"version"`
-	CurrentStep        string    `json:"current_step,omitempty"`
-	IdentitySource     string    `json:"identity_source,omitempty"`
-	StartedAt          time.Time `json:"started_at,omitempty"`
-	CompletedAt        time.Time `json:"completed_at,omitempty"`
-	DriveSkipped       bool      `json:"drive_skipped"`
-	DSMVerifiedAt      time.Time `json:"dsm_verified_at,omitempty"`
-	IdentityVerifiedAt time.Time `json:"identity_verified_at,omitempty"`
-	UpdatedAt          time.Time `json:"updated_at,omitempty"`
+	Version              int       `json:"version"`
+	CurrentStep          string    `json:"current_step,omitempty"`
+	IdentitySource       string    `json:"identity_source,omitempty"`
+	StartedAt            time.Time `json:"started_at,omitempty"`
+	CompletedAt          time.Time `json:"completed_at,omitempty"`
+	DriveSkipped         bool      `json:"drive_skipped"`
+	DSMVerifiedAt        time.Time `json:"dsm_verified_at,omitempty"`
+	IdentityVerifiedAt   time.Time `json:"identity_verified_at,omitempty"`
+	DriveServerStatus    string    `json:"drive_server_status,omitempty"`
+	DriveServerCheckedAt time.Time `json:"drive_server_checked_at,omitempty"`
+	UpdatedAt            time.Time `json:"updated_at,omitempty"`
 }
 
 type Data struct {
@@ -254,6 +256,24 @@ func (s *Store) MarkOnboardingVerified(kind string) error {
 		return errors.New("未知的配置验证类型")
 	}
 	s.data.Onboarding.UpdatedAt = now
+	return s.saveLocked()
+}
+
+// SetDriveServerStatus is reserved for a verified DSM package/runtime probe.
+// Unknown is the safe default: configuration fields alone never prove Drive is
+// installed or usable.
+func (s *Store) SetDriveServerStatus(status string) error {
+	if status != "unknown" && status != "installed" && status != "not_installed" && status != "error" {
+		return errors.New("未知的 Drive Server 状态")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.Onboarding.Version == 0 {
+		s.data.Onboarding = defaultOnboarding()
+	}
+	s.data.Onboarding.DriveServerStatus = status
+	s.data.Onboarding.DriveServerCheckedAt = time.Now().UTC()
+	s.data.Onboarding.UpdatedAt = time.Now().UTC()
 	return s.saveLocked()
 }
 
