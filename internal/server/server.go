@@ -462,6 +462,10 @@ func (s *Server) connectOnboardingDSM(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "onboarding_update_failed", err.Error())
 		return
 	}
+	if err := s.store.SetDriveServerStatus(report.DriveServerStatus); err != nil {
+		apiError(w, http.StatusInternalServerError, "drive_status_store_failed", err.Error())
+		return
+	}
 	current := s.store.Snapshot().Onboarding
 	if _, err := s.store.UpdateOnboarding("identity", current.IdentitySource, current.DriveSkipped, false); err != nil {
 		apiError(w, http.StatusInternalServerError, "onboarding_update_failed", err.Error())

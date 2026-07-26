@@ -50,15 +50,22 @@ type Group struct {
 }
 
 type ProbeReport struct {
-	BaseURL        string             `json:"base_url"`
-	CheckedAt      time.Time          `json:"checked_at"`
-	APIAvailable   map[string]APIInfo `json:"api_available"`
-	MissingAPIs    []string           `json:"missing_apis"`
-	Users          []User             `json:"users,omitempty"`
-	Groups         []Group            `json:"groups,omitempty"`
-	UserCount      int                `json:"user_count"`
-	GroupCount     int                `json:"group_count"`
-	ReadOnlyPassed bool               `json:"read_only_passed"`
+	BaseURL           string             `json:"base_url"`
+	CheckedAt         time.Time          `json:"checked_at"`
+	APIAvailable      map[string]APIInfo `json:"api_available"`
+	MissingAPIs       []string           `json:"missing_apis"`
+	Users             []User             `json:"users,omitempty"`
+	Groups            []Group            `json:"groups,omitempty"`
+	UserCount         int                `json:"user_count"`
+	GroupCount        int                `json:"group_count"`
+	ReadOnlyPassed    bool               `json:"read_only_passed"`
+	DriveServerStatus string             `json:"drive_server_status"` // installed | not_installed | unknown
+}
+
+type Package struct {
+	ID     string `json:"id,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Status string `json:"status,omitempty"`
 }
 
 type Config struct {
@@ -670,8 +677,58 @@ func (c *Client) Probe(ctx context.Context) (ProbeReport, error) {
 		}
 	}
 	report.UserCount, report.GroupCount = len(report.Users), len(report.Groups)
+	report.DriveServerStatus = "unknown"
+	if _, ok := c.apis["SYNO.Core.Package"]; ok {
+		packages, packageErr := c.ListPackages(ctx)
+		if packageErr == nil {
+			report.DriveServerStatus = "not_installed"
+			for _, pkg := range packages {
+				name := strings.ToLower(pkg.ID + " " + pkg.Name)
+				if strings.Contains(name, "synologydrive") || strings.Contains(name, "synology drive") {
+					report.DriveServerStatus = "installed"
+					break
+				}
+			}
+		}
+	}
 	report.ReadOnlyPassed = true
 	return report, nil
+}
+
+// ListPackages uses the read-only package catalog exposed by DSM. Different
+// DSM versions label the package identifier differently, so decode both the
+// stable fields used by current versions and their common aliases.
+func (c *Client) ListPackages(ctx context.Context) ([]Package, error) {
+	raw, err := c.call(ctx, http.MethodGet, "SYNO.Core.Package", 1, "list", url.Values{"offset": {"0"}, "limit": {"1000"}})
+	if err != nil {
+		return nil, err
+	}
+	var data struct {
+		Packages []struct {
+			ID        string `json:"id"`
+			PackageID string `json:"package_id"`
+			Name      string `json:"name"`
+			Display   string `json:"display_name"`
+			Status    string `json:"status"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, fmt.Errorf("解析 DSM 套件列表: %w", err)
+	}
+	packages := make([]Package, 0, len(data.Packages))
+	for _, pkg := range data.Packages {
+		packages = append(packages, Package{ID: firstPackageValue(pkg.ID, pkg.PackageID), Name: firstPackageValue(pkg.Name, pkg.Display), Status: pkg.Status})
+	}
+	return packages, nil
+}
+
+func firstPackageValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (c *Client) call(ctx context.Context, httpMethod, api string, version int, method string, params url.Values) (json.RawMessage, error) {

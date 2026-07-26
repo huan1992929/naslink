@@ -15,6 +15,7 @@ import (
 
 func TestProbeDiscoversAndReadsDirectory(t *testing.T) {
 	coreCallsWithToken := 0
+	drivePackages := []map[string]any{{"id": "SynologyDrive", "name": "Synology Drive Server", "status": "running"}}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			t.Fatal(err)
@@ -29,6 +30,7 @@ func TestProbeDiscoversAndReadsDirectory(t *testing.T) {
 				"SYNO.Core.Group.Member": map[string]any{"path": "entry.cgi", "minVersion": 1, "maxVersion": 1},
 				"SYNO.Core.User":         map[string]any{"path": "entry.cgi", "minVersion": 1, "maxVersion": 1},
 				"SYNO.Core.User.Group":   map[string]any{"path": "entry.cgi", "minVersion": 1, "maxVersion": 1},
+				"SYNO.Core.Package":      map[string]any{"path": "entry.cgi", "minVersion": 1, "maxVersion": 1},
 			}})
 		case "SYNO.API.Auth.login":
 			json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"sid": "sid", "synotoken": "token"}})
@@ -51,6 +53,9 @@ func TestProbeDiscoversAndReadsDirectory(t *testing.T) {
 		case "SYNO.Core.Group.Member.list":
 			coreCallsWithToken++
 			json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"users": []map[string]any{{"name": "alice"}}}})
+		case "SYNO.Core.Package.list":
+			coreCallsWithToken++
+			json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"packages": drivePackages}})
 		default:
 			json.NewEncoder(w).Encode(map[string]any{"success": false, "error": map[string]any{"code": 103}})
 		}
@@ -64,11 +69,19 @@ func TestProbeDiscoversAndReadsDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !report.ReadOnlyPassed || report.UserCount != 1 || report.GroupCount != 1 || len(report.Users[0].Groups) != 1 || report.Users[0].Groups[0] != "users" {
+	if !report.ReadOnlyPassed || report.UserCount != 1 || report.GroupCount != 1 || report.DriveServerStatus != "installed" || len(report.Users[0].Groups) != 1 || report.Users[0].Groups[0] != "users" {
 		t.Fatalf("unexpected report: %+v", report)
 	}
-	if coreCallsWithToken != 3 {
-		t.Fatalf("expected three authenticated Core calls, got %d", coreCallsWithToken)
+	if coreCallsWithToken != 4 {
+		t.Fatalf("expected four authenticated Core calls, got %d", coreCallsWithToken)
+	}
+	drivePackages = nil
+	report, err = c.Probe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.DriveServerStatus != "not_installed" {
+		t.Fatalf("missing Drive package was not reported: %+v", report)
 	}
 }
 
