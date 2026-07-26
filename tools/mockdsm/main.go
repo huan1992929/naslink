@@ -86,7 +86,9 @@ func (s *server) webAPI(w http.ResponseWriter, r *http.Request) {
 	api, method := r.Form.Get("api"), r.Form.Get("method")
 	if api == "SYNO.API.Info" && method == "query" {
 		writeJSON(w, map[string]any{"success": true, "data": map[string]any{
-			"SYNO.API.Auth":         apiInfo("entry.cgi", 1, 7),
+			// The local mock deliberately models the pre-Noise API shape so
+			// browser/UAT exercises can run without real DSM credentials.
+			"SYNO.API.Auth":         apiInfo("entry.cgi", 1, 6),
 			"SYNO.Core.User":        apiInfo("entry.cgi", 1, 1),
 			"SYNO.Core.User.Group":  apiInfo("entry.cgi", 1, 1),
 			"SYNO.Core.Package":     apiInfo("entry.cgi", 1, 1),
@@ -138,6 +140,8 @@ func (s *server) webAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })
 		writeJSON(w, map[string]any{"success": true, "data": map[string]any{"groups": values, "total": len(values)}})
+	case "SYNO.Core.Package.list":
+		writeJSON(w, map[string]any{"success": true, "data": map[string]any{"packages": []map[string]any{{"id": "SynologyDrive", "name": "Synology Drive Server", "status": "running"}}}})
 	case "SYNO.Core.User.Group.join":
 		name := r.Form.Get("name")
 		value, ok := s.users[name]

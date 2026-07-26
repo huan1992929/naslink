@@ -21,7 +21,7 @@ async function api(path, options = {}) {
   let body = {};
   try { body = await response.json(); } catch {}
   if (!response.ok) {
-    const message = body?.error?.message || body?.error_description || `HTTP ${response.status}`;
+    const message = body?.error?.message || body?.message || body?.error_description || `HTTP ${response.status}`;
     if (response.status === 401) showAuth(true);
     throw new Error(message);
   }
@@ -97,7 +97,9 @@ $("logoutButton").addEventListener("click", async () => {
 function renderOnboarding() {
 	const onboarding = state.onboarding;
 	if (!onboarding) return;
-	const active = onboarding.status !== "complete";
+	// Action responses use status=complete for a successful individual step.
+	// Only the persisted terminal step may reveal the daily workspace.
+	const active = onboarding.current_step !== "complete";
 	$("firstRunWizard").classList.toggle("hidden", !active);
 	$("shell").classList.toggle("onboarding-active", active);
 	document.body.classList.toggle("onboarding-active", active);
