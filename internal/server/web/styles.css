@@ -302,6 +302,9 @@ body.onboarding-active .safety-lock { display: none; }
 .wizard-task details p { margin-block-start: var(--space-xs); }
 .wizard-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin-block-start: var(--space-md); }
 .password-strength { margin: calc(var(--space-2xs) * -1) 0 var(--space-xs); color: var(--color-neutral); font-size: var(--text-xs); }
+.daily-health { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); margin-block-start: var(--space-md); padding: var(--space-md); border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-card); background: var(--color-paper); }
+.daily-health h2 { font-size: var(--text-xl); }
+.daily-health p { margin-block-start: var(--space-3xs); color: var(--color-neutral); font-size: var(--text-sm); }
 
 .panel {
   display: none;

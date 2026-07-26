@@ -1,4 +1,4 @@
-const state = { csrf: "", settings: null, probe: null, system: null, license: null, onboarding: null, currentRun: null, grids: {} };
+const state = { csrf: "", settings: null, probe: null, system: null, license: null, onboarding: null, tasks: [], currentRun: null, grids: {} };
 const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
 const formatDate = value => {
@@ -80,7 +80,7 @@ $("authForm").addEventListener("submit", async event => {
 		$("adminPassword").value = "";
 		$("adminPasswordConfirmation").value = "";
 		hideAuth();
-		await Promise.all([loadSettings(), loadSystem(), loadLicense(), loadOnboarding()]);
+		await Promise.all([loadSettings(), loadSystem(), loadLicense(), loadTasks(), loadOnboarding()]);
 		toast(setup ? "NASLink 管理员初始化完成，请继续首次配置" : "已进入管理后台");
 	} catch (error) { toast(error.message, true); }
 });
@@ -101,6 +101,7 @@ function renderOnboarding() {
 	$("firstRunWizard").classList.toggle("hidden", !active);
 	$("shell").classList.toggle("onboarding-active", active);
 	document.body.classList.toggle("onboarding-active", active);
+	renderDailyNavigation(!active);
 	if (!active) return;
 	$("wizardTitle").textContent = onboarding.title || "继续首次配置";
 	$("wizardMessage").textContent = onboarding.message || "NASLink 已保存当前进度。";
@@ -111,6 +112,33 @@ function renderOnboarding() {
 	$("startOnboarding").textContent = "开始连接这台群晖";
 	renderWizardTask(onboarding);
 }
+
+function renderDailyNavigation(daily) {
+	const labels = { overview: "首页", sync: "待处理", organization: "员工与部门", connections: "设置" };
+	document.querySelectorAll(".nav-item").forEach(button => {
+		const target = button.dataset.target;
+		button.classList.toggle("hidden", daily && !labels[target]);
+		if (daily && labels[target]) button.querySelector("span").textContent = labels[target];
+	});
+	$("dailyHealth").classList.toggle("hidden", !daily);
+	if (daily) renderTasks();
+}
+
+async function loadTasks() {
+	try {
+		const result = await api("/api/v1/tasks");
+		state.tasks = result.tasks || [];
+		renderTasks();
+	} catch { state.tasks = []; }
+}
+
+function renderTasks() {
+	const summary = $("dailyHealthSummary");
+	if (!summary) return;
+	summary.textContent = state.tasks.length ? `有 ${state.tasks.length} 项需要处理，包含账号确认或同步复核。` : "系统运行正常，当前没有需要处理的事项。";
+}
+
+$("openTasks").addEventListener("click", () => activatePage("sync"));
 
 function renderWizardTask(onboarding) {
 	const task = $("wizardTask");
