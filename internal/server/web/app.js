@@ -134,7 +134,7 @@ function renderOnboarding() {
 	$("wizardMessage").textContent = onboarding.message || "NASLink 已保存当前进度。";
 	const source = document.querySelector(`input[name="wizardIdentitySource"][value="${onboarding.identity_source || "dingtalk"}"]`);
 	if (source) source.checked = true;
-	$("wizardSteps").innerHTML = (onboarding.steps || []).map(step => `<li data-status="${escapeHTML(step.status)}"><b>${escapeHTML(step.title)}</b><span>${escapeHTML(step.message)}</span></li>`).join("");
+	$("wizardSteps").innerHTML = (onboarding.steps || []).map((step, index) => `<li data-status="${escapeHTML(step.status)}" data-current="${step.id === onboarding.current_step}" aria-current="${step.id === onboarding.current_step ? "step" : "false"}"><i>${index + 1}</i><b>${escapeHTML(step.title)}</b><span>${escapeHTML(step.message)}</span></li>`).join("");
 	$("startOnboarding").classList.toggle("hidden", onboarding.current_step !== "welcome");
 	$("startOnboarding").textContent = "开始连接这台群晖";
 	renderWizardTask(onboarding);
