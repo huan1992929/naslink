@@ -811,6 +811,8 @@ func (s *Server) driveAssessment() map[string]any {
 	case "installed":
 	case "not_installed":
 		reasons = append(reasons, "这台群晖未安装 Synology Drive Server")
+	case "not_running":
+		reasons = append(reasons, "Synology Drive Server 已安装但当前未运行")
 	case "error":
 		reasons = append(reasons, "无法确认 Synology Drive Server 的运行状态")
 	default:
@@ -832,7 +834,7 @@ func (s *Server) driveAssessment() map[string]any {
 		reasons = append(reasons, "请先选择一名在职员工并确认其固定 DSM 账号绑定，再测试 Drive 免登录")
 	}
 	status, action := "ready", "使用已绑定的在职员工测试 Drive 免登录"
-	if driveStatus == "unknown" || driveStatus == "error" {
+	if driveStatus == "unknown" {
 		status, action = "needs_live_test", "先连接群晖并执行 Drive Server 运行时检查"
 	}
 	if len(reasons) > 0 && status != "needs_live_test" {

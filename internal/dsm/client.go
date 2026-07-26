@@ -59,7 +59,7 @@ type ProbeReport struct {
 	UserCount         int                `json:"user_count"`
 	GroupCount        int                `json:"group_count"`
 	ReadOnlyPassed    bool               `json:"read_only_passed"`
-	DriveServerStatus string             `json:"drive_server_status"` // installed | not_installed | unknown
+	DriveServerStatus string             `json:"drive_server_status"` // installed | not_installed | not_running | error | unknown
 }
 
 type Package struct {
@@ -685,7 +685,16 @@ func (c *Client) Probe(ctx context.Context) (ProbeReport, error) {
 			for _, pkg := range packages {
 				name := strings.ToLower(pkg.ID + " " + pkg.Name)
 				if strings.Contains(name, "synologydrive") || strings.Contains(name, "synology drive") {
-					report.DriveServerStatus = "installed"
+					switch strings.ToLower(strings.TrimSpace(pkg.Status)) {
+					case "running", "active", "started":
+						report.DriveServerStatus = "installed"
+					case "":
+						report.DriveServerStatus = "unknown"
+					case "error", "failed", "broken":
+						report.DriveServerStatus = "error"
+					default:
+						report.DriveServerStatus = "not_running"
+					}
 					break
 				}
 			}

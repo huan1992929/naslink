@@ -263,7 +263,7 @@ func (s *Store) MarkOnboardingVerified(kind string) error {
 // Unknown is the safe default: configuration fields alone never prove Drive is
 // installed or usable.
 func (s *Store) SetDriveServerStatus(status string) error {
-	if status != "unknown" && status != "installed" && status != "not_installed" && status != "error" {
+	if status != "unknown" && status != "installed" && status != "not_installed" && status != "not_running" && status != "error" {
 		return errors.New("未知的 Drive Server 状态")
 	}
 	s.mu.Lock()

@@ -83,6 +83,14 @@ func TestProbeDiscoversAndReadsDirectory(t *testing.T) {
 	if report.DriveServerStatus != "not_installed" {
 		t.Fatalf("missing Drive package was not reported: %+v", report)
 	}
+	drivePackages = []map[string]any{{"id": "SynologyDrive", "name": "Synology Drive Server", "status": "stopped"}}
+	report, err = c.Probe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.DriveServerStatus != "not_running" {
+		t.Fatalf("stopped Drive package was not blocked: %+v", report)
+	}
 }
 
 func TestDSM7LoginAddsNoiseRequestHash(t *testing.T) {
