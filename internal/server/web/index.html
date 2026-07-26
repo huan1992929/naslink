@@ -31,7 +31,18 @@
     <button id="logoutButton" class="text-button hidden" type="button">退出</button>
   </header>
 
-  <main class="shell">
+  <main id="shell" class="shell">
+    <section id="firstRunWizard" class="first-run-wizard hidden" aria-labelledby="wizardTitle">
+      <div class="wizard-card">
+        <span class="wizard-kicker">首次配置 · 可随时继续</span>
+        <h1 id="wizardTitle">开始使用 NASLink</h1>
+        <p id="wizardMessage">NASLink 会按步骤保存进度；连接和检测前不会修改群晖账号、群组或文件。</p>
+        <ol id="wizardSteps" class="wizard-steps" aria-label="配置进度"></ol>
+        <fieldset class="wizard-source"><legend>选择公司的通讯录</legend><label><input type="radio" name="wizardIdentitySource" value="dingtalk" checked> 钉钉</label><label><input type="radio" name="wizardIdentitySource" value="wecom"> 企业微信</label></fieldset>
+        <div class="wizard-actions"><button id="startOnboarding" class="primary-button" type="button">开始连接这台群晖</button><button id="saveAndExit" class="text-button" type="button">保存并退出</button></div>
+        <small>此处的密码只用于 NASLink 本地管理，不会发送到钉钉、企业微信或群晖。</small>
+      </div>
+    </section>
     <section class="workspace">
       <section id="overview" class="panel active">
         <div class="page-chrome">
@@ -280,7 +291,7 @@
     </section>
   </main>
 
-  <div id="authLayer" class="auth-layer hidden"><form id="authForm" class="auth-card"><div class="auth-brand"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><span>NASLink 本地管理</span></div><h2 id="authTitle">初始化 NASLink</h2><p id="authDescription">设置一个仅用于本插件管理后台的密码。</p><input class="sr-only" name="username" value="naslink-admin" autocomplete="username" tabindex="-1" aria-hidden="true"><label>管理员密码<input id="adminPassword" type="password" minlength="12" autocomplete="current-password" required></label><button class="primary-button" type="submit">进入控制台</button><small>密码不会发送到外部服务。</small></form></div>
+  <div id="authLayer" class="auth-layer hidden"><form id="authForm" class="auth-card"><div class="auth-brand"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><span>NASLink 本地管理</span></div><h2 id="authTitle">初始化 NASLink</h2><p id="authDescription">设置一个仅用于本插件管理后台的密码。</p><input class="sr-only" name="username" value="naslink-admin" autocomplete="username" tabindex="-1" aria-hidden="true"><label>NASLink 管理密码<input id="adminPassword" type="password" minlength="12" autocomplete="current-password" required></label><label id="adminPasswordConfirmationLabel" class="hidden">再次输入密码<input id="adminPasswordConfirmation" type="password" minlength="12" autocomplete="new-password"></label><p id="passwordStrength" class="password-strength hidden" aria-live="polite"></p><button id="authSubmit" class="primary-button" type="submit">进入控制台</button><small>密码不会发送到外部服务。</small></form></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <dialog id="confirmDialog"><form method="dialog"><span class="dialog-mark">DSM 写操作</span><h3>确认写入测试群晖</h3><p>请输入确认词 <code>APPLY NASLINK POC</code></p><input id="confirmationText" autocomplete="off"><div><button value="cancel" class="text-button">取消</button><button id="confirmApply" value="default" class="danger-button">执行测试写入</button></div></form></dialog>
   <dialog id="syncConfirmDialog"><form method="dialog"><span class="dialog-mark">生命周期写操作</span><h3>确认执行并复核</h3><p>请输入 <code>APPLY NASLINK SYNC</code>。系统执行后会自动重新盘点；本计划不删除账号或文件。</p><input id="syncConfirmationText" autocomplete="off"><div><button value="cancel" class="text-button">取消</button><button id="confirmSyncApply" value="default" class="danger-button">执行并复核</button></div></form></dialog>

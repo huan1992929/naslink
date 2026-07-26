@@ -113,6 +113,19 @@ type AuditEvent struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
+// Onboarding records the operator's place in the first-run journey. It is
+// deliberately separate from connection health: callers must still derive
+// whether a step can be completed from the current configuration and data.
+type Onboarding struct {
+	Version        int       `json:"version"`
+	CurrentStep    string    `json:"current_step,omitempty"`
+	IdentitySource string    `json:"identity_source,omitempty"`
+	StartedAt      time.Time `json:"started_at,omitempty"`
+	CompletedAt    time.Time `json:"completed_at,omitempty"`
+	DriveSkipped   bool      `json:"drive_skipped"`
+	UpdatedAt      time.Time `json:"updated_at,omitempty"`
+}
+
 type Data struct {
 	Version      int           `json:"version"`
 	InstallID    string        `json:"install_id"`
@@ -126,6 +139,7 @@ type Data struct {
 	SyncRuns     []SyncRun     `json:"sync_runs"`
 	AuditEvents  []AuditEvent  `json:"audit_events"`
 	SourceEvents []SourceEvent `json:"source_events"`
+	Onboarding   Onboarding    `json:"onboarding"`
 }
 
 type Store struct {
@@ -141,7 +155,7 @@ func Open(dataDir string) (*Store, error) {
 	s := &Store{path: filepath.Join(dataDir, "state.json")}
 	raw, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
-		s.data = Data{Version: 1, InstallID: randomID("ins"), CreatedAt: time.Now().UTC(), Policy: defaultPolicy()}
+		s.data = Data{Version: 2, InstallID: randomID("ins"), CreatedAt: time.Now().UTC(), Policy: defaultPolicy(), Onboarding: defaultOnboarding()}
 		return s, s.saveLocked()
 	}
 	if err != nil {
@@ -156,12 +170,19 @@ func Open(dataDir string) (*Store, error) {
 	if s.data.Policy.UsernameRule == "" {
 		s.data.Policy = defaultPolicy()
 	}
+	if s.data.Onboarding.Version == 0 {
+		s.data.Onboarding = defaultOnboarding()
+	}
 	for i := range s.data.Users {
 		if s.data.Users[i].SourceType == "" {
 			s.data.Users[i].SourceType = "dingtalk"
 		}
 	}
 	return s, nil
+}
+
+func defaultOnboarding() Onboarding {
+	return Onboarding{Version: 1, CurrentStep: "welcome", IdentitySource: "dingtalk"}
 }
 
 func defaultPolicy() Policy {
@@ -175,6 +196,44 @@ func (s *Store) Snapshot() Data {
 	var out Data
 	_ = json.Unmarshal(raw, &out)
 	return out
+}
+
+// UpdateOnboarding persists a validated transition. The supported steps are
+// intentionally fixed so a malformed API request cannot corrupt resume state.
+func (s *Store) UpdateOnboarding(step, identitySource string, driveSkipped, complete bool) (Onboarding, error) {
+	validSteps := map[string]bool{"welcome": true, "dsm": true, "identity": true, "scope": true, "matches": true, "sync": true, "drive_optional": true, "complete": true}
+	if !validSteps[step] {
+		return Onboarding{}, errors.New("无效的配置步骤")
+	}
+	if identitySource != "" && identitySource != "dingtalk" && identitySource != "wecom" {
+		return Onboarding{}, errors.New("身份源必须是 dingtalk 或 wecom")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := &s.data.Onboarding
+	if current.Version == 0 {
+		*current = defaultOnboarding()
+	}
+	now := time.Now().UTC()
+	if current.StartedAt.IsZero() {
+		current.StartedAt = now
+	}
+	current.CurrentStep = step
+	if identitySource != "" {
+		current.IdentitySource = identitySource
+	}
+	current.DriveSkipped = driveSkipped
+	if complete {
+		current.CurrentStep = "complete"
+		current.CompletedAt = now
+	} else if step != "complete" {
+		current.CompletedAt = time.Time{}
+	}
+	current.UpdatedAt = now
+	if err := s.saveLocked(); err != nil {
+		return Onboarding{}, err
+	}
+	return *current, nil
 }
 
 func (s *Store) ReplaceDirectory(departments []Department, users []SourceUser) error {

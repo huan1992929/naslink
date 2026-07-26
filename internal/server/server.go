@@ -76,6 +76,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/setup", s.setup)
 	mux.HandleFunc("POST /api/v1/session", s.login)
 	mux.HandleFunc("DELETE /api/v1/session", s.requireSession(s.logout))
+	mux.HandleFunc("GET /api/v1/onboarding", s.requireSession(s.getOnboarding))
+	mux.HandleFunc("POST /api/v1/onboarding/start", s.requireSession(s.startOnboarding))
+	mux.HandleFunc("POST /api/v1/onboarding/drive/skip", s.requireSession(s.skipDriveOnboarding))
+	mux.HandleFunc("POST /api/v1/onboarding/complete", s.requireSession(s.completeOnboarding))
 	mux.HandleFunc("GET /api/v1/settings", s.requireSession(s.getSettings))
 	mux.HandleFunc("PUT /api/v1/settings", s.requireSession(s.updateSettings))
 	mux.HandleFunc("POST /api/v1/dsm/probe", s.requireSession(s.probeDSM))
@@ -316,10 +320,15 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Password string `json:"password"`
+		Password             string `json:"password"`
+		PasswordConfirmation string `json:"password_confirmation"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		apiError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if body.Password != body.PasswordConfirmation {
+		apiError(w, http.StatusBadRequest, "password_mismatch", "两次输入的 NASLink 管理密码不一致")
 		return
 	}
 	if err := s.manager.SetupAdmin(body.Password); err != nil {
@@ -332,7 +341,133 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setSessionCookie(w, r, token)
-	writeJSON(w, http.StatusCreated, map[string]any{"ok": true, "csrf_token": csrf})
+	writeJSON(w, http.StatusCreated, map[string]any{"ok": true, "csrf_token": csrf, "onboarding": s.onboardingResponse()})
+}
+
+type onboardingStep struct {
+	ID      string `json:"id"`
+	Status  string `json:"status"`
+	Title   string `json:"title"`
+	Message string `json:"message"`
+}
+
+type onboardingResponseBody struct {
+	Status            string           `json:"status"`
+	Title             string           `json:"title"`
+	Message           string           `json:"message"`
+	BlockingReasons   []string         `json:"blocking_reasons"`
+	RecommendedAction string           `json:"recommended_action"`
+	Counts            map[string]int   `json:"counts"`
+	CurrentStep       string           `json:"current_step"`
+	IdentitySource    string           `json:"identity_source"`
+	DriveSkipped      bool             `json:"drive_skipped"`
+	UpdatedAt         time.Time        `json:"updated_at,omitempty"`
+	Steps             []onboardingStep `json:"steps"`
+}
+
+func (s *Server) onboardingResponse() onboardingResponseBody {
+	data := s.store.Snapshot()
+	public := s.manager.Public()
+	onboarding := data.Onboarding
+	if onboarding.Version == 0 {
+		onboarding = appstate.Onboarding{Version: 1, CurrentStep: "welcome", IdentitySource: public.IdentitySource}
+	}
+	if onboarding.IdentitySource == "" {
+		onboarding.IdentitySource = public.IdentitySource
+	}
+	if onboarding.CurrentStep == "" {
+		onboarding.CurrentStep = "welcome"
+	}
+	dsmReady := public.DSM.Account != "" && public.DSM.HasPassword
+	identityReady := (onboarding.IdentitySource == "dingtalk" && public.DingTalk.ClientID != "" && public.DingTalk.HasClientSecret) || (onboarding.IdentitySource == "wecom" && public.WeCom.CorpID != "" && public.WeCom.AgentID != "" && public.WeCom.HasSecret)
+	scopeReady := false
+	for _, department := range data.Departments {
+		if department.Managed {
+			scopeReady = true
+			break
+		}
+	}
+	matchesReady := len(data.Matches) > 0
+	syncReady := data.Policy.ScheduleEnabled
+	driveReady := onboarding.DriveSkipped || (public.OIDC.Issuer != "" && public.OIDC.ClientID != "" && public.OIDC.HasClientSecret)
+	steps := []onboardingStep{
+		{ID: "welcome", Status: onboardingStatus(!onboarding.StartedAt.IsZero()), Title: "开始配置", Message: "选择企业通讯录后，NASLink 会按步骤保存进度。"},
+		{ID: "dsm", Status: onboardingStatus(dsmReady), Title: "连接这台群晖", Message: "仅在授权后读取账号和群组。"},
+		{ID: "identity", Status: onboardingStatus(identityReady), Title: "连接企业通讯录", Message: "保存凭据后检查通讯录权限。"},
+		{ID: "scope", Status: onboardingStatus(scopeReady), Title: "选择同步人员", Message: "先确定范围，不会写入 DSM。"},
+		{ID: "matches", Status: onboardingStatus(matchesReady), Title: "确认已有账号", Message: "保护账号和冲突账号不会自动处理。"},
+		{ID: "sync", Status: onboardingStatus(syncReady), Title: "启用员工同步", Message: "写入前仍需预览、密码确认和写后复核。"},
+		{ID: "drive_optional", Status: onboardingStatus(driveReady), Title: "配置 Drive 免登录（可选）", Message: "稍后配置不会影响员工同步。"},
+	}
+	response := onboardingResponseBody{
+		Status: "in_progress", Title: "继续首次配置", Message: "NASLink 已保存当前进度，可以随时退出后继续。",
+		BlockingReasons: []string{}, RecommendedAction: "完成下一步配置", Counts: map[string]int{"departments": len(data.Departments), "users": len(data.Users), "matches": len(data.Matches)},
+		CurrentStep: onboarding.CurrentStep, IdentitySource: onboarding.IdentitySource, DriveSkipped: onboarding.DriveSkipped, UpdatedAt: onboarding.UpdatedAt, Steps: steps,
+	}
+	if !data.Onboarding.CompletedAt.IsZero() {
+		response.Status, response.Title, response.Message, response.RecommendedAction = "complete", "首次配置已完成", "员工同步和日常管理已可从首页继续。", "进入 NASLink 首页"
+		return response
+	}
+	for _, step := range steps {
+		if step.Status != "complete" && step.ID != "welcome" {
+			response.CurrentStep, response.RecommendedAction = step.ID, "完成："+step.Title
+			response.BlockingReasons = []string{"尚未完成：" + step.Title}
+			return response
+		}
+	}
+	response.CurrentStep, response.RecommendedAction = "complete", "完成首次配置"
+	return response
+}
+
+func onboardingStatus(ready bool) string {
+	if ready {
+		return "complete"
+	}
+	return "not_started"
+}
+
+func (s *Server) getOnboarding(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.onboardingResponse())
+}
+
+func (s *Server) startOnboarding(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IdentitySource string `json:"identity_source"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if body.IdentitySource == "" {
+		body.IdentitySource = s.manager.Public().IdentitySource
+	}
+	if _, err := s.store.UpdateOnboarding("dsm", body.IdentitySource, false, false); err != nil {
+		apiError(w, http.StatusBadRequest, "onboarding_update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s.onboardingResponse())
+}
+
+func (s *Server) skipDriveOnboarding(w http.ResponseWriter, _ *http.Request) {
+	current := s.store.Snapshot().Onboarding
+	if _, err := s.store.UpdateOnboarding("drive_optional", current.IdentitySource, true, false); err != nil {
+		apiError(w, http.StatusInternalServerError, "onboarding_update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s.onboardingResponse())
+}
+
+func (s *Server) completeOnboarding(w http.ResponseWriter, _ *http.Request) {
+	response := s.onboardingResponse()
+	if response.CurrentStep != "complete" {
+		apiError(w, http.StatusConflict, "onboarding_incomplete", "请先完成员工同步，或处理当前阻塞项")
+		return
+	}
+	if _, err := s.store.UpdateOnboarding("complete", response.IdentitySource, response.DriveSkipped, true); err != nil {
+		apiError(w, http.StatusInternalServerError, "onboarding_update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s.onboardingResponse())
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {

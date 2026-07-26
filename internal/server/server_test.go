@@ -16,6 +16,110 @@ import (
 	appstate "naslink/internal/state"
 )
 
+func newTestServer(t *testing.T) (*httptest.Server, *appstate.Store) {
+	t.Helper()
+	dataDir := t.TempDir()
+	manager, err := config.NewManager(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := appstate.Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := oidc.NewProvider(manager, store, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := store.Snapshot()
+	licenseManager, err := license.NewManager(dataDir, snapshot.InstallID, snapshot.CreatedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := New(manager, provider, store, licenseManager, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return httptest.NewServer(app.Handler()), store
+}
+
+func TestOnboardingRequiresPasswordConfirmationSessionAndCSRF(t *testing.T) {
+	server, store := newTestServer(t)
+	defer server.Close()
+
+	mismatch, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"different-password"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mismatch.Body.Close()
+	if mismatch.StatusCode != http.StatusBadRequest {
+		t.Fatalf("password mismatch status: %d", mismatch.StatusCode)
+	}
+
+	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.Body.Close()
+	if setup.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(setup.Body)
+		t.Fatalf("setup failed: %d %s", setup.StatusCode, raw)
+	}
+	var setupBody struct {
+		CSRF string `json:"csrf_token"`
+	}
+	if err := json.NewDecoder(setup.Body).Decode(&setupBody); err != nil {
+		t.Fatal(err)
+	}
+	cookie := setup.Cookies()[0]
+
+	unauthenticated, err := http.Post(server.URL+"/api/v1/onboarding/start", "application/json", bytes.NewBufferString(`{"identity_source":"wecom"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unauthenticated.Body.Close()
+	if unauthenticated.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected session rejection, got %d", unauthenticated.StatusCode)
+	}
+
+	withoutCSRF, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/onboarding/start", bytes.NewBufferString(`{"identity_source":"wecom"}`))
+	withoutCSRF.Header.Set("Content-Type", "application/json")
+	withoutCSRF.AddCookie(cookie)
+	response, err := http.DefaultClient.Do(withoutCSRF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected CSRF rejection, got %d", response.StatusCode)
+	}
+
+	start, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/onboarding/start", bytes.NewBufferString(`{"identity_source":"wecom"}`))
+	start.Header.Set("Content-Type", "application/json")
+	start.Header.Set("X-CSRF-Token", setupBody.CSRF)
+	start.AddCookie(cookie)
+	response, err = http.DefaultClient.Do(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(response.Body)
+		t.Fatalf("start failed: %d %s", response.StatusCode, raw)
+	}
+	if got := store.Snapshot().Onboarding; got.CurrentStep != "dsm" || got.IdentitySource != "wecom" || got.StartedAt.IsZero() {
+		t.Fatalf("onboarding state was not saved: %#v", got)
+	}
+
+	repeat, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	repeat.Header.Set("Content-Type", "application/json")
+	response, err = http.DefaultClient.Do(repeat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusConflict {
+		t.Fatalf("expected setup replay rejection, got %d", response.StatusCode)
+	}
+}
+
 func TestAuthenticatedDirectoryImport(t *testing.T) {
 	dataDir := t.TempDir()
 	manager, err := config.NewManager(dataDir)
@@ -39,7 +143,7 @@ func TestAuthenticatedDirectoryImport(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	setupBody := bytes.NewBufferString(`{"password":"a-strong-test-password"}`)
+	setupBody := bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`)
 	setupRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", setupBody)
 	setupRequest.Header.Set("Content-Type", "application/json")
 	setupResponse, err := http.DefaultClient.Do(setupRequest)
@@ -114,7 +218,7 @@ func TestIdentityTestUsesUnsavedDingTalkCredentials(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	setupRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"a-strong-test-password"}`))
+	setupRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
 	setupRequest.Header.Set("Content-Type", "application/json")
 	setupResponse, err := http.DefaultClient.Do(setupRequest)
 	if err != nil {
@@ -190,7 +294,7 @@ func TestDingTalkDiagnosisUsesDraftCredentialsAndReturnsVisibility(t *testing.T)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	setupRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"a-strong-test-password"}`))
+	setupRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
 	setupRequest.Header.Set("Content-Type", "application/json")
 	setupResponse, err := http.DefaultClient.Do(setupRequest)
 	if err != nil {

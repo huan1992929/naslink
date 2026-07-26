@@ -1,6 +1,9 @@
 package state
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestStorePreservesDepartmentMapping(t *testing.T) {
 	store, err := Open(t.TempDir())
@@ -39,5 +42,28 @@ func TestMissingDirectoryUserBecomesInactive(t *testing.T) {
 	snapshot := store.Snapshot()
 	if len(snapshot.Users) != 1 || snapshot.Users[0].Active {
 		t.Fatalf("missing user should be retained as inactive: %#v", snapshot.Users)
+	}
+}
+
+func TestOnboardingPersistsResumeState(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.UpdateOnboarding("scope", "wecom", true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.CurrentStep != "scope" || updated.IdentitySource != "wecom" || !updated.DriveSkipped || updated.StartedAt.IsZero() || updated.UpdatedAt.IsZero() {
+		t.Fatalf("unexpected onboarding state: %#v", updated)
+	}
+	store, err = Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted := store.Snapshot().Onboarding
+	if persisted.CurrentStep != "scope" || persisted.IdentitySource != "wecom" || !persisted.DriveSkipped || persisted.UpdatedAt.Before(time.Now().Add(-time.Minute)) {
+		t.Fatalf("onboarding was not persisted: %#v", persisted)
 	}
 }

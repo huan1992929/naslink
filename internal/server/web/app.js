@@ -1,4 +1,4 @@
-const state = { csrf: "", settings: null, probe: null, system: null, license: null, currentRun: null, grids: {} };
+const state = { csrf: "", settings: null, probe: null, system: null, license: null, onboarding: null, currentRun: null, grids: {} };
 const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
 const formatDate = value => {
@@ -29,12 +29,17 @@ async function api(path, options = {}) {
 }
 
 function showAuth(setup) {
-  $("authLayer").classList.remove("hidden");
-  $("authTitle").textContent = setup ? "初始化 NASLink" : "管理身份验证";
-  $("authDescription").textContent = setup ? "设置一个至少 12 位、仅用于本插件的管理密码。" : "输入 NASLink 本地管理员密码。";
-  $("authForm").dataset.mode = setup ? "setup" : "login";
-  $("logoutButton").classList.add("hidden");
-  setTimeout(() => $("adminPassword").focus(), 60);
+	$("authLayer").classList.remove("hidden");
+	$("authTitle").textContent = setup ? "设置 NASLink 管理密码" : "管理身份验证";
+	$("authDescription").textContent = setup ? "这是 NASLink 后台密码，不是 DSM、钉钉或企业微信密码。请设置至少 12 位的本地管理密码。" : "输入 NASLink 本地管理员密码。";
+	$("authForm").dataset.mode = setup ? "setup" : "login";
+	$("adminPasswordConfirmationLabel").classList.toggle("hidden", !setup);
+	$("passwordStrength").classList.toggle("hidden", !setup);
+	$("adminPasswordConfirmation").required = setup;
+	$("adminPassword").autocomplete = setup ? "new-password" : "current-password";
+	$("authSubmit").textContent = setup ? "设置密码并开始配置" : "进入管理后台";
+	$("logoutButton").classList.add("hidden");
+	setTimeout(() => $("adminPassword").focus(), 60);
 }
 
 function hideAuth() {
@@ -54,24 +59,80 @@ async function boot() {
   }
 }
 
+function passwordStrength(password) {
+	if (password.length < 12) return "请使用至少 12 位密码";
+	const kinds = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z\d]/].filter(pattern => pattern.test(password)).length;
+	return kinds >= 3 ? "密码强度：较好" : "密码强度：可用；建议混合字母、数字和符号";
+}
+
+$("adminPassword").addEventListener("input", () => {
+	if ($("authForm").dataset.mode === "setup") $("passwordStrength").textContent = passwordStrength($("adminPassword").value);
+});
+
 $("authForm").addEventListener("submit", async event => {
   event.preventDefault();
   const setup = event.currentTarget.dataset.mode === "setup";
   try {
-    const result = await api(setup ? "/api/v1/setup" : "/api/v1/session", { method: "POST", body: JSON.stringify({ password: $("adminPassword").value }) });
-    state.csrf = result.csrf_token;
-    $("adminPassword").value = "";
-    hideAuth();
-    await Promise.all([loadSettings(), loadSystem(), loadLicense()]);
-    toast(setup ? "NASLink 管理员初始化完成" : "已进入管理后台");
-  } catch (error) { toast(error.message, true); }
+		const payload = { password: $("adminPassword").value };
+		if (setup) payload.password_confirmation = $("adminPasswordConfirmation").value;
+		const result = await api(setup ? "/api/v1/setup" : "/api/v1/session", { method: "POST", body: JSON.stringify(payload) });
+		state.csrf = result.csrf_token;
+		$("adminPassword").value = "";
+		$("adminPasswordConfirmation").value = "";
+		hideAuth();
+		await Promise.all([loadSettings(), loadSystem(), loadLicense(), loadOnboarding()]);
+		toast(setup ? "NASLink 管理员初始化完成，请继续首次配置" : "已进入管理后台");
+	} catch (error) { toast(error.message, true); }
 });
 
 $("logoutButton").addEventListener("click", async () => {
   try { await api("/api/v1/session", { method: "DELETE" }); } catch {}
-  state.csrf = "";
-  showAuth(false);
+	state.csrf = "";
+	$("firstRunWizard").classList.add("hidden");
+	$("shell").classList.remove("onboarding-active");
+	document.body.classList.remove("onboarding-active");
+	showAuth(false);
 });
+
+function renderOnboarding() {
+	const onboarding = state.onboarding;
+	if (!onboarding) return;
+	const active = onboarding.status !== "complete";
+	$("firstRunWizard").classList.toggle("hidden", !active);
+	$("shell").classList.toggle("onboarding-active", active);
+	document.body.classList.toggle("onboarding-active", active);
+	if (!active) return;
+	$("wizardTitle").textContent = onboarding.title || "继续首次配置";
+	$("wizardMessage").textContent = onboarding.message || "NASLink 已保存当前进度。";
+	const source = document.querySelector(`input[name="wizardIdentitySource"][value="${onboarding.identity_source || "dingtalk"}"]`);
+	if (source) source.checked = true;
+	$("wizardSteps").innerHTML = (onboarding.steps || []).map(step => `<li data-status="${escapeHTML(step.status)}"><b>${escapeHTML(step.title)}</b><span>${escapeHTML(step.message)}</span></li>`).join("");
+	$("startOnboarding").textContent = onboarding.current_step === "welcome" ? "开始连接这台群晖" : (onboarding.recommended_action || "继续配置");
+}
+
+async function loadOnboarding() {
+	state.onboarding = await api("/api/v1/onboarding");
+	renderOnboarding();
+}
+
+$("startOnboarding").addEventListener("click", async () => {
+	try {
+		if (state.onboarding?.current_step && state.onboarding.current_step !== "welcome") {
+			$("firstRunWizard").classList.add("hidden");
+			$("shell").classList.remove("onboarding-active");
+			document.body.classList.remove("onboarding-active");
+			activatePage("connections");
+			return;
+		}
+		const source = document.querySelector('input[name="wizardIdentitySource"]:checked')?.value || "dingtalk";
+		state.onboarding = await api("/api/v1/onboarding/start", { method: "POST", body: JSON.stringify({ identity_source: source }) });
+		renderOnboarding();
+		activatePage("connections");
+		toast("进度已保存：接下来连接这台群晖");
+	} catch (error) { toast(error.message, true); }
+});
+
+$("saveAndExit").addEventListener("click", () => $("logoutButton").click());
 
 function redrawVisibleGrids() {
   requestAnimationFrame(() => Object.values(state.grids).forEach(grid => {
