@@ -295,6 +295,11 @@ body.onboarding-active .safety-lock { display: none; }
 .wizard-source { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin: 0; padding: var(--space-sm); border: var(--rule-hair) solid var(--color-rule); }
 .wizard-source legend { padding-inline: var(--space-3xs); font-size: var(--text-sm); font-weight: 700; }
 .wizard-source label { display: inline-flex; align-items: center; gap: var(--space-3xs); }
+.wizard-task { display: grid; gap: var(--space-xs); margin-block: var(--space-md); }
+.wizard-task h2 { font-size: var(--text-xl); }
+.wizard-task p { color: var(--color-neutral); font-size: var(--text-sm); }
+.wizard-task details { padding: var(--space-xs); border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-input); }
+.wizard-task details p { margin-block-start: var(--space-xs); }
 .wizard-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin-block-start: var(--space-md); }
 .password-strength { margin: calc(var(--space-2xs) * -1) 0 var(--space-xs); color: var(--color-neutral); font-size: var(--text-xs); }
 

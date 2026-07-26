@@ -120,6 +120,63 @@ func TestOnboardingRequiresPasswordConfirmationSessionAndCSRF(t *testing.T) {
 	}
 }
 
+func TestOnboardingScopeAndSafeMatchesNeverAcceptProtectedAccount(t *testing.T) {
+	server, store := newTestServer(t)
+	defer server.Close()
+	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.Body.Close()
+	var setupBody struct {
+		CSRF string `json:"csrf_token"`
+	}
+	if err := json.NewDecoder(setup.Body).Decode(&setupBody); err != nil {
+		t.Fatal(err)
+	}
+	cookie := setup.Cookies()[0]
+	if err := store.ReplaceDirectory([]appstate.Department{{ID: "1", Name: "设计"}, {ID: "2", Name: "财务"}}, []appstate.SourceUser{{Subject: "u1", Name: "张三", Active: true}, {Subject: "u2", Name: "管理员", Active: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReplaceMatches([]appstate.Match{{Subject: "u1", DSMUsername: "zhangsan", Status: "auto", Score: 100}, {Subject: "u2", DSMUsername: "admin", Status: "auto", Score: 100}}); err != nil {
+		t.Fatal(err)
+	}
+
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/onboarding/scope", bytes.NewBufferString(`{"mode":"selected","department_ids":["1"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-CSRF-Token", setupBody.CSRF)
+	request.AddCookie(cookie)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("scope save failed: %d", response.StatusCode)
+	}
+	snapshot := store.Snapshot()
+	if !snapshot.Departments[0].Managed || snapshot.Departments[1].Managed || snapshot.Departments[0].DSMGroup == "" {
+		t.Fatalf("unexpected managed scope: %#v", snapshot.Departments)
+	}
+
+	request, _ = http.NewRequest(http.MethodPost, server.URL+"/api/v1/onboarding/matches/accept-safe", bytes.NewBufferString(`{}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-CSRF-Token", setupBody.CSRF)
+	request.AddCookie(cookie)
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("safe match acceptance failed: %d", response.StatusCode)
+	}
+	matched := store.Snapshot().Matches
+	if !matched[0].Confirmed || matched[1].Confirmed {
+		t.Fatalf("protected account was accepted: %#v", matched)
+	}
+}
+
 func TestAuthenticatedDirectoryImport(t *testing.T) {
 	dataDir := t.TempDir()
 	manager, err := config.NewManager(dataDir)

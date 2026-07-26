@@ -107,7 +107,33 @@ function renderOnboarding() {
 	const source = document.querySelector(`input[name="wizardIdentitySource"][value="${onboarding.identity_source || "dingtalk"}"]`);
 	if (source) source.checked = true;
 	$("wizardSteps").innerHTML = (onboarding.steps || []).map(step => `<li data-status="${escapeHTML(step.status)}"><b>${escapeHTML(step.title)}</b><span>${escapeHTML(step.message)}</span></li>`).join("");
-	$("startOnboarding").textContent = onboarding.current_step === "welcome" ? "开始连接这台群晖" : (onboarding.recommended_action || "继续配置");
+	$("startOnboarding").classList.toggle("hidden", onboarding.current_step !== "welcome");
+	$("startOnboarding").textContent = "开始连接这台群晖";
+	renderWizardTask(onboarding);
+}
+
+function renderWizardTask(onboarding) {
+	const task = $("wizardTask");
+	const source = onboarding.identity_source || "dingtalk";
+	const settings = state.settings || {};
+	if (onboarding.current_step === "dsm") {
+		task.innerHTML = `<h2>连接这台群晖</h2><p>只会读取账号和群组，用于生成后续建议。</p><label>群晖地址<input id="wizardDSMBaseURL" value="${escapeHTML(settings.dsm?.base_url || "https://127.0.0.1:5001")}" autocomplete="url"></label><label>DSM 管理账号<input id="wizardDSMAccount" value="${escapeHTML(settings.dsm?.account || "")}" autocomplete="username"></label><label>DSM 密码<input id="wizardDSMPassword" type="password" autocomplete="new-password" placeholder="${settings.dsm?.has_password ? "已保存，留空保持原值" : "请输入 DSM 管理密码"}"></label><label class="check"><input id="wizardDSMInsecure" type="checkbox" ${settings.dsm?.insecure_tls ? "checked" : ""}><span>允许本机自签名证书</span></label><button data-wizard-action="dsm" class="primary-button" type="button">授权 NASLink 检查这台群晖</button><details><summary>连接有问题？</summary><p>高级地址、证书与 UAT 设置仍可在设置中查看，不会在此步骤修改群晖。</p></details>`;
+		return;
+	}
+	if (onboarding.current_step === "identity") {
+		const isWeCom = source === "wecom";
+		task.innerHTML = isWeCom ? `<h2>连接公司的企业微信通讯录</h2><p>保存后会检查部门和员工读取权限，并自动拉取通讯录。</p><label>Corp ID<input id="wizardCorpID" value="${escapeHTML(settings.wecom?.corp_id || "")}"></label><label>Agent ID<input id="wizardAgentID" value="${escapeHTML(settings.wecom?.agent_id || "")}"></label><label>Secret<input id="wizardWeComSecret" type="password" placeholder="${settings.wecom?.has_secret ? "已保存，留空保持原值" : "请输入 Secret"}"></label><button data-wizard-action="identity" class="primary-button" type="button">保存并检查权限</button>` : `<h2>连接公司的钉钉通讯录</h2><p>保存后会检查部门和员工读取权限，并自动拉取通讯录。</p><label>Client ID / AppKey<input id="wizardDingClientID" value="${escapeHTML(settings.dingtalk?.client_id || "")}"></label><label>Client Secret<input id="wizardDingClientSecret" type="password" placeholder="${settings.dingtalk?.has_client_secret ? "已保存，留空保持原值" : "请输入 Client Secret"}"></label><button data-wizard-action="identity" class="primary-button" type="button">保存并检查权限</button>`;
+		return;
+	}
+	if (onboarding.current_step === "scope") {
+		task.innerHTML = `<h2>选择需要同步的人员</h2><p>默认推荐同步全部在职员工。此步骤只保存范围，不会写入群晖。</p><button data-wizard-action="scope-all" class="primary-button" type="button">同步全部在职员工（推荐）</button><details><summary>只同步指定部门</summary><label>部门 ID（以逗号分隔）<input id="wizardDepartmentIDs" placeholder="例如 1,12,13"></label><button data-wizard-action="scope-selected" class="secondary-button" type="button">使用指定部门</button></details>`;
+		return;
+	}
+	if (onboarding.current_step === "matches") {
+		task.innerHTML = `<h2>确认已有账号</h2><p>NASLink 只会批量接受唯一、确定且非保护账号的匹配建议；冲突、管理员和重复绑定账号不会自动处理。</p><button data-wizard-action="accept-matches" class="primary-button" type="button">接受安全建议并继续</button>`;
+		return;
+	}
+	task.innerHTML = onboarding.current_step === "sync" ? `<h2>预览并启用员工同步</h2><p>下一步会先生成变更预览；启用时必须再次输入 NASLink 管理密码。</p>` : "";
 }
 
 async function loadOnboarding() {
@@ -117,18 +143,35 @@ async function loadOnboarding() {
 
 $("startOnboarding").addEventListener("click", async () => {
 	try {
-		if (state.onboarding?.current_step && state.onboarding.current_step !== "welcome") {
-			$("firstRunWizard").classList.add("hidden");
-			$("shell").classList.remove("onboarding-active");
-			document.body.classList.remove("onboarding-active");
-			activatePage("connections");
-			return;
-		}
 		const source = document.querySelector('input[name="wizardIdentitySource"]:checked')?.value || "dingtalk";
 		state.onboarding = await api("/api/v1/onboarding/start", { method: "POST", body: JSON.stringify({ identity_source: source }) });
 		renderOnboarding();
 		activatePage("connections");
 		toast("进度已保存：接下来连接这台群晖");
+	} catch (error) { toast(error.message, true); }
+});
+
+$("wizardTask").addEventListener("click", async event => {
+	const action = event.target?.dataset?.wizardAction;
+	if (!action) return;
+	try {
+		if (action === "dsm") {
+			state.onboarding = await api("/api/v1/onboarding/dsm/connect", { method: "POST", body: JSON.stringify({ base_url: $("wizardDSMBaseURL").value.trim(), account: $("wizardDSMAccount").value.trim(), password: $("wizardDSMPassword").value, insecure_tls: $("wizardDSMInsecure").checked }) });
+		} else if (action === "identity") {
+			const source = state.onboarding.identity_source;
+			const body = { source_type: source, dingtalk: {}, wecom: {} };
+			if (source === "wecom") body.wecom = { corp_id: $("wizardCorpID").value.trim(), agent_id: $("wizardAgentID").value.trim(), secret: $("wizardWeComSecret").value };
+			else body.dingtalk = { client_id: $("wizardDingClientID").value.trim(), client_secret: $("wizardDingClientSecret").value };
+			state.onboarding = await api("/api/v1/onboarding/identity/connect", { method: "POST", body: JSON.stringify(body) });
+		} else if (action === "scope-all" || action === "scope-selected") {
+			const ids = action === "scope-selected" ? $("wizardDepartmentIDs").value.split(",").map(value => value.trim()).filter(Boolean) : [];
+			state.onboarding = await api("/api/v1/onboarding/scope", { method: "POST", body: JSON.stringify({ mode: action === "scope-all" ? "all_active" : "selected", department_ids: ids }) });
+		} else if (action === "accept-matches") {
+			state.onboarding = await api("/api/v1/onboarding/matches/accept-safe", { method: "POST", body: "{}" });
+		}
+		await loadSettings();
+		renderOnboarding();
+		toast(state.onboarding.message || "配置进度已保存");
 	} catch (error) { toast(error.message, true); }
 });
 

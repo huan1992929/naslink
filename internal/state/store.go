@@ -117,13 +117,15 @@ type AuditEvent struct {
 // deliberately separate from connection health: callers must still derive
 // whether a step can be completed from the current configuration and data.
 type Onboarding struct {
-	Version        int       `json:"version"`
-	CurrentStep    string    `json:"current_step,omitempty"`
-	IdentitySource string    `json:"identity_source,omitempty"`
-	StartedAt      time.Time `json:"started_at,omitempty"`
-	CompletedAt    time.Time `json:"completed_at,omitempty"`
-	DriveSkipped   bool      `json:"drive_skipped"`
-	UpdatedAt      time.Time `json:"updated_at,omitempty"`
+	Version            int       `json:"version"`
+	CurrentStep        string    `json:"current_step,omitempty"`
+	IdentitySource     string    `json:"identity_source,omitempty"`
+	StartedAt          time.Time `json:"started_at,omitempty"`
+	CompletedAt        time.Time `json:"completed_at,omitempty"`
+	DriveSkipped       bool      `json:"drive_skipped"`
+	DSMVerifiedAt      time.Time `json:"dsm_verified_at,omitempty"`
+	IdentityVerifiedAt time.Time `json:"identity_verified_at,omitempty"`
+	UpdatedAt          time.Time `json:"updated_at,omitempty"`
 }
 
 type Data struct {
@@ -234,6 +236,25 @@ func (s *Store) UpdateOnboarding(step, identitySource string, driveSkipped, comp
 		return Onboarding{}, err
 	}
 	return *current, nil
+}
+
+func (s *Store) MarkOnboardingVerified(kind string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.Onboarding.Version == 0 {
+		s.data.Onboarding = defaultOnboarding()
+	}
+	now := time.Now().UTC()
+	switch kind {
+	case "dsm":
+		s.data.Onboarding.DSMVerifiedAt = now
+	case "identity":
+		s.data.Onboarding.IdentityVerifiedAt = now
+	default:
+		return errors.New("未知的配置验证类型")
+	}
+	s.data.Onboarding.UpdatedAt = now
+	return s.saveLocked()
 }
 
 func (s *Store) ReplaceDirectory(departments []Department, users []SourceUser) error {

@@ -78,6 +78,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/session", s.requireSession(s.logout))
 	mux.HandleFunc("GET /api/v1/onboarding", s.requireSession(s.getOnboarding))
 	mux.HandleFunc("POST /api/v1/onboarding/start", s.requireSession(s.startOnboarding))
+	mux.HandleFunc("POST /api/v1/onboarding/dsm/connect", s.requireSession(s.connectOnboardingDSM))
+	mux.HandleFunc("POST /api/v1/onboarding/identity/connect", s.requireSession(s.connectOnboardingIdentity))
+	mux.HandleFunc("POST /api/v1/onboarding/scope", s.requireSession(s.saveOnboardingScope))
+	mux.HandleFunc("POST /api/v1/onboarding/matches/accept-safe", s.requireSession(s.acceptSafeOnboardingMatches))
 	mux.HandleFunc("POST /api/v1/onboarding/drive/skip", s.requireSession(s.skipDriveOnboarding))
 	mux.HandleFunc("POST /api/v1/onboarding/complete", s.requireSession(s.completeOnboarding))
 	mux.HandleFunc("GET /api/v1/settings", s.requireSession(s.getSettings))
@@ -378,8 +382,8 @@ func (s *Server) onboardingResponse() onboardingResponseBody {
 	if onboarding.CurrentStep == "" {
 		onboarding.CurrentStep = "welcome"
 	}
-	dsmReady := public.DSM.Account != "" && public.DSM.HasPassword
-	identityReady := (onboarding.IdentitySource == "dingtalk" && public.DingTalk.ClientID != "" && public.DingTalk.HasClientSecret) || (onboarding.IdentitySource == "wecom" && public.WeCom.CorpID != "" && public.WeCom.AgentID != "" && public.WeCom.HasSecret)
+	dsmReady := !onboarding.DSMVerifiedAt.IsZero()
+	identityReady := !onboarding.IdentityVerifiedAt.IsZero()
 	scopeReady := false
 	for _, department := range data.Departments {
 		if department.Managed {
@@ -417,6 +421,220 @@ func (s *Server) onboardingResponse() onboardingResponseBody {
 	}
 	response.CurrentStep, response.RecommendedAction = "complete", "完成首次配置"
 	return response
+}
+
+func (s *Server) onboardingFailure(w http.ResponseWriter, status int, title, message, action string) {
+	response := s.onboardingResponse()
+	response.Status, response.Title, response.Message = "blocked", title, message
+	response.BlockingReasons = []string{message}
+	response.RecommendedAction = action
+	writeJSON(w, status, response)
+}
+
+type onboardingDSMConnectRequest struct {
+	BaseURL     string `json:"base_url"`
+	Account     string `json:"account"`
+	Password    string `json:"password"`
+	InsecureTLS bool   `json:"insecure_tls"`
+}
+
+func (s *Server) connectOnboardingDSM(w http.ResponseWriter, r *http.Request) {
+	var request onboardingDSMConnectRequest
+	if err := decodeJSON(r, &request); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if err := s.manager.UpdateOnboardingDSM(request.BaseURL, request.Account, request.Password, request.InsecureTLS); err != nil {
+		s.onboardingFailure(w, http.StatusBadRequest, "无法保存群晖连接", err.Error(), "检查群晖地址、管理员账号和密码后重试")
+		return
+	}
+	report, err := s.probe(r.Context())
+	if err != nil {
+		s.onboardingFailure(w, http.StatusBadGateway, "无法登录这台群晖", "NASLink 尚未修改任何账号或群组。请检查管理员账号、密码和连接地址。", "检查群晖管理员权限后重新连接")
+		return
+	}
+	if err := s.store.MarkOnboardingVerified("dsm"); err != nil {
+		apiError(w, http.StatusInternalServerError, "onboarding_update_failed", err.Error())
+		return
+	}
+	current := s.store.Snapshot().Onboarding
+	if _, err := s.store.UpdateOnboarding("identity", current.IdentitySource, current.DriveSkipped, false); err != nil {
+		apiError(w, http.StatusInternalServerError, "onboarding_update_failed", err.Error())
+		return
+	}
+	response := s.onboardingResponse()
+	response.Status, response.Title, response.Message = "complete", "群晖连接成功", "已只读盘点群晖账号和群组；本次没有修改任何内容。"
+	response.Counts["dsm_users"], response.Counts["dsm_groups"] = len(report.Users), len(report.Groups)
+	writeJSON(w, http.StatusOK, response)
+}
+
+type onboardingIdentityConnectRequest struct {
+	SourceType string `json:"source_type"`
+	DingTalk   struct {
+		ClientID     string `json:"client_id"`
+		ClientSecret string `json:"client_secret"`
+	} `json:"dingtalk"`
+	WeCom struct {
+		CorpID  string `json:"corp_id"`
+		AgentID string `json:"agent_id"`
+		Secret  string `json:"secret"`
+	} `json:"wecom"`
+}
+
+func (s *Server) connectOnboardingIdentity(w http.ResponseWriter, r *http.Request) {
+	var request onboardingIdentityConnectRequest
+	if err := decodeJSON(r, &request); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if request.SourceType == "" {
+		request.SourceType = s.store.Snapshot().Onboarding.IdentitySource
+	}
+	if err := s.manager.UpdateOnboardingIdentity(request.SourceType, request.DingTalk.ClientID, request.DingTalk.ClientSecret, request.WeCom.CorpID, request.WeCom.AgentID, request.WeCom.Secret); err != nil {
+		s.onboardingFailure(w, http.StatusBadRequest, "请补全企业通讯录凭据", err.Error(), "填写应用凭据后保存并检查权限")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	departments, users, err := s.fetchActiveDirectory(ctx)
+	if err != nil {
+		s.onboardingFailure(w, http.StatusBadGateway, "还无法读取企业通讯录", "NASLink 尚未修改群晖。请确认已开通部门和员工读取权限后重新检查。", "开通通讯录权限后重新检查")
+		return
+	}
+	if err := s.store.ReplaceDirectory(departments, users); err != nil {
+		apiError(w, http.StatusInternalServerError, "directory_store_failed", err.Error())
+		return
+	}
+	report, err := s.probe(ctx)
+	if err != nil {
+		s.onboardingFailure(w, http.StatusBadGateway, "通讯录已读取，但群晖盘点需要重新检查", "NASLink 尚未修改群晖。请恢复群晖连接后重新检查。", "重新连接这台群晖")
+		return
+	}
+	matches := syncengine.MatchUsers(users, report.Users, s.store.Snapshot().Matches)
+	if err := s.store.ReplaceMatches(matches); err != nil {
+		apiError(w, http.StatusInternalServerError, "match_store_failed", err.Error())
+		return
+	}
+	if err := s.store.MarkOnboardingVerified("identity"); err != nil {
+		apiError(w, http.StatusInternalServerError, "onboarding_update_failed", err.Error())
+		return
+	}
+	current := s.store.Snapshot().Onboarding
+	if _, err := s.store.UpdateOnboarding("scope", request.SourceType, current.DriveSkipped, false); err != nil {
+		apiError(w, http.StatusInternalServerError, "onboarding_update_failed", err.Error())
+		return
+	}
+	response := s.onboardingResponse()
+	response.Status, response.Title, response.Message = "complete", "企业通讯录连接成功", "已读取通讯录；下一步选择需要同步的人员范围。"
+	response.Counts["departments"], response.Counts["users"], response.Counts["matches"] = len(departments), len(users), len(matches)
+	writeJSON(w, http.StatusOK, response)
+}
+
+type onboardingScopeRequest struct {
+	Mode          string   `json:"mode"`
+	DepartmentIDs []string `json:"department_ids"`
+}
+
+func (s *Server) saveOnboardingScope(w http.ResponseWriter, r *http.Request) {
+	var request onboardingScopeRequest
+	if err := decodeJSON(r, &request); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	snapshot := s.store.Snapshot()
+	if len(snapshot.Departments) == 0 {
+		s.onboardingFailure(w, http.StatusConflict, "还没有可选择的部门", "请先连接企业通讯录并读取部门列表。", "连接企业通讯录")
+		return
+	}
+	selected := map[string]bool{}
+	switch request.Mode {
+	case "all_active":
+		for _, department := range snapshot.Departments {
+			selected[department.ID] = true
+		}
+	case "selected":
+		for _, id := range request.DepartmentIDs {
+			selected[strings.TrimSpace(id)] = true
+		}
+		if len(selected) == 0 {
+			s.onboardingFailure(w, http.StatusBadRequest, "请选择至少一个部门", "指定部门模式需要选择需要同步的部门。", "选择同步部门")
+			return
+		}
+	default:
+		apiError(w, http.StatusBadRequest, "scope_mode_invalid", "范围必须为 all_active 或 selected")
+		return
+	}
+	known := map[string]bool{}
+	for _, department := range snapshot.Departments {
+		known[department.ID] = true
+	}
+	for id := range selected {
+		if !known[id] {
+			apiError(w, http.StatusBadRequest, "department_not_found", "所选部门不存在")
+			return
+		}
+	}
+	for _, department := range snapshot.Departments {
+		managed := selected[department.ID]
+		group := department.DSMGroup
+		if managed && group == "" {
+			group = "naslink_dept_" + safeOnboardingID(department.ID)
+		}
+		if err := s.store.UpsertDepartmentMapping(department.ID, group, managed); err != nil {
+			apiError(w, http.StatusInternalServerError, "scope_store_failed", err.Error())
+			return
+		}
+	}
+	current := s.store.Snapshot().Onboarding
+	if _, err := s.store.UpdateOnboarding("matches", current.IdentitySource, current.DriveSkipped, false); err != nil {
+		apiError(w, http.StatusInternalServerError, "onboarding_update_failed", err.Error())
+		return
+	}
+	response := s.onboardingResponse()
+	response.Status, response.Title, response.Message = "complete", "人员范围已保存", "本步骤只保存范围，不会修改群晖。"
+	response.Counts["managed_departments"] = len(selected)
+	writeJSON(w, http.StatusOK, response)
+}
+
+func safeOnboardingID(value string) string {
+	var builder strings.Builder
+	for _, char := range value {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '_' || char == '-' {
+			builder.WriteRune(char)
+		} else {
+			builder.WriteByte('_')
+		}
+	}
+	if builder.Len() == 0 {
+		return "department"
+	}
+	return builder.String()
+}
+
+func (s *Server) acceptSafeOnboardingMatches(w http.ResponseWriter, _ *http.Request) {
+	snapshot := s.store.Snapshot()
+	protected := s.protectedUsers()
+	accepted, skipped := 0, 0
+	for _, match := range snapshot.Matches {
+		if match.Confirmed || match.Status != "auto" || match.Score < 100 || match.DSMUsername == "" || protected[strings.ToLower(match.DSMUsername)] {
+			skipped++
+			continue
+		}
+		if err := s.store.ConfirmMatch(match.Subject, match.DSMUsername); err != nil {
+			skipped++
+			continue
+		}
+		accepted++
+	}
+	current := s.store.Snapshot().Onboarding
+	if _, err := s.store.UpdateOnboarding("sync", current.IdentitySource, current.DriveSkipped, false); err != nil {
+		apiError(w, http.StatusInternalServerError, "onboarding_update_failed", err.Error())
+		return
+	}
+	response := s.onboardingResponse()
+	response.Status, response.Title, response.Message = "complete", "安全账号建议已处理", "仅确认了唯一且非保护账号的确定性匹配；冲突账号仍需人工处理。"
+	response.Counts["accepted"], response.Counts["skipped"] = accepted, skipped
+	writeJSON(w, http.StatusOK, response)
 }
 
 func onboardingStatus(ready bool) string {

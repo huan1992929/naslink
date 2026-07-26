@@ -39,6 +39,7 @@
         <p id="wizardMessage">NASLink 会按步骤保存进度；连接和检测前不会修改群晖账号、群组或文件。</p>
         <ol id="wizardSteps" class="wizard-steps" aria-label="配置进度"></ol>
         <fieldset class="wizard-source"><legend>选择公司的通讯录</legend><label><input type="radio" name="wizardIdentitySource" value="dingtalk" checked> 钉钉</label><label><input type="radio" name="wizardIdentitySource" value="wecom"> 企业微信</label></fieldset>
+        <div id="wizardTask" class="wizard-task" aria-live="polite"></div>
         <div class="wizard-actions"><button id="startOnboarding" class="primary-button" type="button">开始连接这台群晖</button><button id="saveAndExit" class="text-button" type="button">保存并退出</button></div>
         <small>此处的密码只用于 NASLink 本地管理，不会发送到钉钉、企业微信或群晖。</small>
       </div>

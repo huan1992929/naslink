@@ -483,6 +483,79 @@ func (m *Manager) Update(update Update) error {
 	return m.saveLocked()
 }
 
+// UpdateOnboardingDSM saves only the fields a first-time operator is asked to
+// provide. Advanced settings remain untouched, and an empty password keeps a
+// previously encrypted value rather than clearing it.
+func (m *Manager) UpdateOnboardingDSM(baseURL, account, password string, insecureTLS bool) error {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	account = strings.TrimSpace(account)
+	if err := validateOptionalHTTPURL(baseURL, "DSM 地址"); err != nil || baseURL == "" {
+		if err != nil {
+			return err
+		}
+		return errors.New("DSM 地址不能为空")
+	}
+	if account == "" {
+		return errors.New("DSM 管理账号不能为空")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settings.DSM.BaseURL = baseURL
+	m.settings.DSM.Account = account
+	m.settings.DSM.InsecureTLS = insecureTLS
+	if password != "" {
+		encoded, err := m.encrypt(password)
+		if err != nil {
+			return err
+		}
+		m.settings.DSM.Password = encoded
+	}
+	if m.settings.DSM.Password == "" {
+		return errors.New("DSM 管理密码不能为空")
+	}
+	return m.saveLocked()
+}
+
+// UpdateOnboardingIdentity intentionally exposes just the required business
+// credentials. Protocol endpoints and callback settings stay under Advanced
+// Settings and are never reset by the setup wizard.
+func (m *Manager) UpdateOnboardingIdentity(source, clientID, clientSecret, corpID, agentID, secret string) error {
+	source = strings.TrimSpace(source)
+	if source != "dingtalk" && source != "wecom" {
+		return errors.New("身份源必须是 dingtalk 或 wecom")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settings.IdentitySource = source
+	if source == "dingtalk" {
+		m.settings.DingTalk.ClientID = strings.TrimSpace(clientID)
+		if clientSecret != "" {
+			encoded, err := m.encrypt(clientSecret)
+			if err != nil {
+				return err
+			}
+			m.settings.DingTalk.ClientSecret = encoded
+		}
+		if m.settings.DingTalk.ClientID == "" || m.settings.DingTalk.ClientSecret == "" {
+			return errors.New("请填写钉钉 Client ID 和 Client Secret")
+		}
+	} else {
+		m.settings.WeCom.CorpID = strings.TrimSpace(corpID)
+		m.settings.WeCom.AgentID = strings.TrimSpace(agentID)
+		if secret != "" {
+			encoded, err := m.encrypt(secret)
+			if err != nil {
+				return err
+			}
+			m.settings.WeCom.Secret = encoded
+		}
+		if m.settings.WeCom.CorpID == "" || m.settings.WeCom.AgentID == "" || m.settings.WeCom.Secret == "" {
+			return errors.New("请填写企业微信 Corp ID、Agent ID 和 Secret")
+		}
+	}
+	return m.saveLocked()
+}
+
 func valueOr(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {
 		return fallback
