@@ -1223,6 +1223,11 @@ td .secondary-button { min-height: 2.5rem; }
   background: var(--color-overlay);
 }
 
+body.auth-only .masthead,
+body.auth-only .shell { display: none; }
+
+body.auth-only .auth-layer { background: var(--color-paper-2); }
+
 .auth-card {
   width: min(27rem, 100%);
   padding: var(--space-lg);

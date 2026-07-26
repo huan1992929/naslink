@@ -22,13 +22,14 @@ async function api(path, options = {}) {
   try { body = await response.json(); } catch {}
   if (!response.ok) {
     const message = body?.error?.message || body?.message || body?.error_description || `HTTP ${response.status}`;
-    if (response.status === 401) showAuth(true);
+    if (response.status === 401) showAuth(false);
     throw new Error(message);
   }
   return body;
 }
 
 function showAuth(setup) {
+	document.body.classList.add("auth-only");
 	$("authLayer").classList.remove("hidden");
 	$("authTitle").textContent = setup ? "设置 NASLink 管理密码" : "管理身份验证";
 	$("authDescription").textContent = setup ? "这是 NASLink 后台密码，不是 DSM、钉钉或企业微信密码。请设置至少 8 位，并同时包含字母和数字。" : "输入 NASLink 本地管理员密码。";
@@ -58,6 +59,7 @@ function showSetupComplete() {
 }
 
 function hideAuth() {
+  document.body.classList.remove("auth-only");
   $("authLayer").classList.add("hidden");
   $("logoutButton").classList.remove("hidden");
 }
@@ -113,6 +115,13 @@ $("setupLoginButton").addEventListener("click", () => showAuth(false));
 $("logoutButton").addEventListener("click", async () => {
   try { await api("/api/v1/session", { method: "DELETE" }); } catch {}
 	state.csrf = "";
+	state.settings = null;
+	state.probe = null;
+	state.system = null;
+	state.license = null;
+	state.onboarding = null;
+	state.tasks = [];
+	state.currentRun = null;
 	$("firstRunWizard").classList.add("hidden");
 	$("shell").classList.remove("onboarding-active");
 	document.body.classList.remove("onboarding-active");
