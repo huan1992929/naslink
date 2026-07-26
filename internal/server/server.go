@@ -82,8 +82,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/onboarding/identity/connect", s.requireSession(s.connectOnboardingIdentity))
 	mux.HandleFunc("POST /api/v1/onboarding/scope", s.requireSession(s.saveOnboardingScope))
 	mux.HandleFunc("POST /api/v1/onboarding/matches/accept-safe", s.requireSession(s.acceptSafeOnboardingMatches))
+	mux.HandleFunc("POST /api/v1/onboarding/sync/enable", s.requireSession(s.enableOnboardingSync))
 	mux.HandleFunc("POST /api/v1/onboarding/drive/skip", s.requireSession(s.skipDriveOnboarding))
 	mux.HandleFunc("POST /api/v1/onboarding/complete", s.requireSession(s.completeOnboarding))
+	mux.HandleFunc("GET /api/v1/tasks", s.requireSession(s.getTasks))
+	mux.HandleFunc("GET /api/v1/support/diagnostics", s.requireSession(s.diagnostics))
+	mux.HandleFunc("GET /api/v1/drive/readiness", s.requireSession(s.driveReadiness))
+	mux.HandleFunc("POST /api/v1/drive/preflight", s.requireSession(s.drivePreflight))
 	mux.HandleFunc("GET /api/v1/settings", s.requireSession(s.getSettings))
 	mux.HandleFunc("PUT /api/v1/settings", s.requireSession(s.updateSettings))
 	mux.HandleFunc("POST /api/v1/dsm/probe", s.requireSession(s.probeDSM))
@@ -635,6 +640,172 @@ func (s *Server) acceptSafeOnboardingMatches(w http.ResponseWriter, _ *http.Requ
 	response.Status, response.Title, response.Message = "complete", "安全账号建议已处理", "仅确认了唯一且非保护账号的确定性匹配；冲突账号仍需人工处理。"
 	response.Counts["accepted"], response.Counts["skipped"] = accepted, skipped
 	writeJSON(w, http.StatusOK, response)
+}
+
+type onboardingSyncEnableRequest struct {
+	PlanID        string `json:"plan_id"`
+	AdminPassword string `json:"admin_password"`
+}
+
+func (s *Server) enableOnboardingSync(w http.ResponseWriter, r *http.Request) {
+	var request onboardingSyncEnableRequest
+	if err := decodeJSON(r, &request); err != nil {
+		apiError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if !s.manager.VerifyAdmin(request.AdminPassword) {
+		s.onboardingFailure(w, http.StatusUnauthorized, "无法确认管理员身份", "NASLink 管理密码不正确，未执行任何群晖写入。", "重新输入 NASLink 管理密码")
+		return
+	}
+	run, ok := s.store.FindRun(request.PlanID)
+	if !ok || run.Status != "preview" {
+		s.onboardingFailure(w, http.StatusConflict, "同步预览不可用", "请先生成新的同步预览，再确认启用员工同步。", "生成新的同步预览")
+		return
+	}
+	if time.Since(run.CreatedAt) > 30*time.Minute {
+		s.onboardingFailure(w, http.StatusConflict, "同步预览已过期", "为避免按旧数据写入，NASLink 已拒绝执行。", "重新生成同步预览")
+		return
+	}
+	licenseStatus := s.license.Status(time.Now())
+	if !licenseStatus.Valid || !license.HasFeature(licenseStatus, "sync") {
+		s.onboardingFailure(w, http.StatusPaymentRequired, "当前授权不能启用同步", valueOrReason(licenseStatus.Reason, "License 未授权同步功能"), "检查系统授权")
+		return
+	}
+	if !s.syncMu.TryLock() {
+		s.onboardingFailure(w, http.StatusConflict, "正在处理另一项同步", "当前同步完成后再试。", "稍后重试")
+		return
+	}
+	defer s.syncMu.Unlock()
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+	report, err := s.probe(ctx)
+	if err != nil {
+		s.onboardingFailure(w, http.StatusBadGateway, "无法重新检查群晖", "NASLink 未执行任何写入。请恢复群晖连接后重新生成预览。", "重新连接这台群晖")
+		return
+	}
+	latest := syncengine.BuildPlan(s.store.Snapshot(), report)
+	if !sameSyncActions(run.Actions, latest.Actions) {
+		s.onboardingFailure(w, http.StatusConflict, "同步预览已过期", "群晖或通讯录状态已变化，NASLink 未执行写入。", "重新生成同步预览")
+		return
+	}
+	run, err = s.executeRun(ctx, run, "onboarding")
+	if err != nil {
+		s.onboardingFailure(w, http.StatusBadGateway, "同步未完成", "NASLink 已停止执行，请检查结果后重试。", "查看同步结果")
+		return
+	}
+	if run.Status == "completed" {
+		policy := s.store.Snapshot().Policy
+		policy.ScheduleEnabled = true
+		if err := s.store.UpdatePolicy(policy); err != nil {
+			apiError(w, http.StatusInternalServerError, "policy_update_failed", err.Error())
+			return
+		}
+		current := s.store.Snapshot().Onboarding
+		_, _ = s.store.UpdateOnboarding("drive_optional", current.IdentitySource, current.DriveSkipped, false)
+	}
+	response := s.onboardingResponse()
+	response.Status, response.Title, response.Message = run.Status, "员工同步已执行并复核", run.Summary
+	response.Counts["successes"], response.Counts["failures"] = run.Successes, run.Failures
+	writeJSON(w, http.StatusOK, response)
+}
+
+type taskItem struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	Message string `json:"message"`
+	Action  string `json:"action"`
+}
+
+func (s *Server) pendingTasks() []taskItem {
+	snapshot := s.store.Snapshot()
+	tasks := []taskItem{}
+	for _, match := range snapshot.Matches {
+		if !match.Confirmed && (match.Status == "conflict" || match.Status == "review") {
+			tasks = append(tasks, taskItem{ID: "match-" + match.Subject, Type: "match_review", Title: "需要确认账号", Message: "存在不能安全自动确认的账号匹配。", Action: "确认已有账号"})
+		}
+	}
+	for _, run := range snapshot.SyncRuns {
+		if run.Status == "partial" || run.Status == "failed" {
+			tasks = append(tasks, taskItem{ID: "sync-" + run.ID, Type: "sync_failure", Title: "同步需要处理", Message: "存在未完成或未通过复核的同步动作。", Action: "查看同步结果"})
+		}
+	}
+	for _, event := range snapshot.SourceEvents {
+		if event.Status == "failed" {
+			tasks = append(tasks, taskItem{ID: "event-" + event.ID, Type: "source_event", Title: "人员变动需要检查", Message: "一次人员变动未能生成安全预览。", Action: "检查企业通讯录连接"})
+		}
+	}
+	return tasks
+}
+
+func (s *Server) getTasks(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"tasks": s.pendingTasks(), "count": len(s.pendingTasks())})
+}
+
+func (s *Server) diagnostics(w http.ResponseWriter, _ *http.Request) {
+	snapshot := s.store.Snapshot()
+	public := s.manager.Public()
+	latestStatus := "none"
+	if len(snapshot.SyncRuns) > 0 {
+		latestStatus = snapshot.SyncRuns[0].Status
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":      "0.3.0-rc19",
+		"capabilities": map[string]bool{"directory": true, "sync_preview": true, "drive_oidc": public.OIDC.Issuer != ""},
+		"connections":  map[string]string{"dsm": connectionState(!snapshot.Onboarding.DSMVerifiedAt.IsZero()), "identity": connectionState(!snapshot.Onboarding.IdentityVerifiedAt.IsZero())},
+		"counts":       map[string]int{"departments": len(snapshot.Departments), "users": len(snapshot.Users), "matches": len(snapshot.Matches), "tasks": len(s.pendingTasks())},
+		"sync":         map[string]string{"latest_status": latestStatus},
+	})
+}
+
+func connectionState(ok bool) string {
+	if ok {
+		return "ready"
+	}
+	return "not_ready"
+}
+
+func (s *Server) driveReadiness(w http.ResponseWriter, _ *http.Request) {
+	public := s.manager.Public()
+	issues := []string{}
+	if public.OIDC.Issuer == "" || public.OIDC.ClientID == "" || !public.OIDC.HasClientSecret {
+		issues = append(issues, "尚未完成 NASLink 与 DSM 的 Drive 免登录配置")
+	}
+	if public.IdentitySource == "wecom" && public.WeCom.DriveWebURL == "" {
+		issues = append(issues, "尚未填写 Synology Drive Web 地址")
+	}
+	status := "ready"
+	if len(issues) > 0 {
+		status = "blocked"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": status, "title": "Drive 免登录", "message": valueOrReason(firstMessage(issues), "Drive 免登录配置已就绪。"), "blocking_reasons": issues, "recommended_action": valueOrReason(firstMessage(issues), "测试 Drive 免登录"), "counts": map[string]int{}})
+}
+
+func firstMessage(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func (s *Server) drivePreflight(w http.ResponseWriter, _ *http.Request) {
+	public := s.manager.Public()
+	checks := []map[string]string{
+		{"key": "issuer", "status": connectionState(public.OIDC.Issuer != ""), "message": "NASLink 公共地址"},
+		{"key": "client", "status": connectionState(public.OIDC.ClientID != "" && public.OIDC.HasClientSecret), "message": "DSM OIDC 客户端"},
+	}
+	if public.IdentitySource == "wecom" {
+		checks = append(checks, map[string]string{"key": "drive_url", "status": connectionState(public.WeCom.DriveWebURL != ""), "message": "Synology Drive Web 地址"})
+	}
+	ready := true
+	for _, check := range checks {
+		ready = ready && check["status"] == "ready"
+	}
+	status := "blocked"
+	if ready {
+		status = "ready"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": status, "title": "Drive 配置检查", "message": "检查只读取 NASLink 本地配置，不会发起员工登录。", "blocking_reasons": []string{}, "recommended_action": valueOrReason(map[bool]string{true: "可以测试 Drive 免登录", false: "补全缺少的 Drive 配置"}[ready], ""), "counts": map[string]int{}, "checks": checks})
 }
 
 func onboardingStatus(ready bool) string {

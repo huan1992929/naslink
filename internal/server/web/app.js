@@ -133,7 +133,19 @@ function renderWizardTask(onboarding) {
 		task.innerHTML = `<h2>确认已有账号</h2><p>NASLink 只会批量接受唯一、确定且非保护账号的匹配建议；冲突、管理员和重复绑定账号不会自动处理。</p><button data-wizard-action="accept-matches" class="primary-button" type="button">接受安全建议并继续</button>`;
 		return;
 	}
-	task.innerHTML = onboarding.current_step === "sync" ? `<h2>预览并启用员工同步</h2><p>下一步会先生成变更预览；启用时必须再次输入 NASLink 管理密码。</p>` : "";
+	if (onboarding.current_step === "sync") {
+		task.innerHTML = `<h2>预览并启用员工同步</h2><p>系统会重新读取群晖并生成变更预览；不会删除账号或文件。启用时需要再次输入 NASLink 管理密码。</p><button data-wizard-action="preview-sync" class="secondary-button" type="button">生成新的同步预览</button><p id="wizardPlanSummary"></p><label>预览编号<input id="wizardPlanID" autocomplete="off" placeholder="先生成同步预览"></label><label>NASLink 管理密码<input id="wizardSyncPassword" type="password" autocomplete="current-password"></label><button data-wizard-action="enable-sync" class="primary-button" type="button">确认并启用员工同步</button>`;
+		return;
+	}
+	if (onboarding.current_step === "drive_optional") {
+		task.innerHTML = `<h2>配置 Drive 免登录（可选）</h2><p>员工同步已经可以独立运行。现在可检查 Drive 配置，也可以稍后再做。</p><button data-wizard-action="drive-preflight" class="secondary-button" type="button">检查 Drive 配置</button><p id="wizardDriveResult"></p><button data-wizard-action="drive-skip" class="text-button" type="button">稍后配置</button>`;
+		return;
+	}
+	if (onboarding.current_step === "complete") {
+		task.innerHTML = `<h2>完成首次配置</h2><p>账号同步已启用。确认后将进入日常管理首页。</p><button data-wizard-action="complete-onboarding" class="primary-button" type="button">进入 NASLink 首页</button>`;
+		return;
+	}
+	task.innerHTML = "";
 }
 
 async function loadOnboarding() {
@@ -168,6 +180,23 @@ $("wizardTask").addEventListener("click", async event => {
 			state.onboarding = await api("/api/v1/onboarding/scope", { method: "POST", body: JSON.stringify({ mode: action === "scope-all" ? "all_active" : "selected", department_ids: ids }) });
 		} else if (action === "accept-matches") {
 			state.onboarding = await api("/api/v1/onboarding/matches/accept-safe", { method: "POST", body: "{}" });
+		} else if (action === "preview-sync") {
+			const run = await api("/api/v1/sync/preview", { method: "POST", body: "{}" });
+			$("wizardPlanID").value = run.id || "";
+			$("wizardPlanSummary").textContent = run.summary || "已生成同步预览";
+			toast("已生成同步预览；请核对后输入管理密码启用");
+			return;
+		} else if (action === "enable-sync") {
+			state.onboarding = await api("/api/v1/onboarding/sync/enable", { method: "POST", body: JSON.stringify({ plan_id: $("wizardPlanID").value.trim(), admin_password: $("wizardSyncPassword").value }) });
+		} else if (action === "drive-preflight") {
+			const result = await api("/api/v1/drive/preflight", { method: "POST", body: "{}" });
+			$("wizardDriveResult").textContent = result.message || "已完成检查";
+			toast(result.recommended_action || result.message);
+			return;
+		} else if (action === "drive-skip") {
+			state.onboarding = await api("/api/v1/onboarding/drive/skip", { method: "POST", body: "{}" });
+		} else if (action === "complete-onboarding") {
+			state.onboarding = await api("/api/v1/onboarding/complete", { method: "POST", body: "{}" });
 		}
 		await loadSettings();
 		renderOnboarding();

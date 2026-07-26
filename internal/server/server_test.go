@@ -177,6 +177,51 @@ func TestOnboardingScopeAndSafeMatchesNeverAcceptProtectedAccount(t *testing.T) 
 	}
 }
 
+func TestDiagnosticsAreSanitizedAndSyncEnableRejectsWrongPassword(t *testing.T) {
+	server, store := newTestServer(t)
+	defer server.Close()
+	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.Body.Close()
+	var setupBody struct {
+		CSRF string `json:"csrf_token"`
+	}
+	if err := json.NewDecoder(setup.Body).Decode(&setupBody); err != nil {
+		t.Fatal(err)
+	}
+	cookie := setup.Cookies()[0]
+	if err := store.ReplaceDirectory([]appstate.Department{{ID: "secret-department", Name: "保密部门"}}, []appstate.SourceUser{{Subject: "user-1", Name: "张三", Email: "zhangsan@example.com", Mobile: "13800138000", Active: true}}); err != nil {
+		t.Fatal(err)
+	}
+
+	request, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/support/diagnostics", nil)
+	request.AddCookie(cookie)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	raw, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusOK || bytes.Contains(raw, []byte("张三")) || bytes.Contains(raw, []byte("zhangsan@example.com")) || bytes.Contains(raw, []byte("13800138000")) || bytes.Contains(raw, []byte("secret-department")) {
+		t.Fatalf("diagnostics leaked private data: %d %s", response.StatusCode, raw)
+	}
+
+	request, _ = http.NewRequest(http.MethodPost, server.URL+"/api/v1/onboarding/sync/enable", bytes.NewBufferString(`{"plan_id":"missing","admin_password":"wrong-password"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-CSRF-Token", setupBody.CSRF)
+	request.AddCookie(cookie)
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong password must be rejected before DSM access: %d", response.StatusCode)
+	}
+}
+
 func TestAuthenticatedDirectoryImport(t *testing.T) {
 	dataDir := t.TempDir()
 	manager, err := config.NewManager(dataDir)
