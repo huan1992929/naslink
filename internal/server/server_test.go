@@ -44,7 +44,7 @@ func TestOnboardingRequiresPasswordConfirmationSessionAndCSRF(t *testing.T) {
 	server, store := newTestServer(t)
 	defer server.Close()
 
-	mismatch, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"different-password"}`))
+	mismatch, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password1","password_confirmation":"different-password"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestOnboardingRequiresPasswordConfirmationSessionAndCSRF(t *testing.T) {
 		t.Fatalf("password mismatch status: %d", mismatch.StatusCode)
 	}
 
-	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"admin1234","password_confirmation":"admin1234"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestOnboardingRequiresPasswordConfirmationSessionAndCSRF(t *testing.T) {
 		t.Fatalf("onboarding state was not saved: %#v", got)
 	}
 
-	repeat, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	repeat, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"admin1234","password_confirmation":"admin1234"}`))
 	repeat.Header.Set("Content-Type", "application/json")
 	response, err = http.DefaultClient.Do(repeat)
 	if err != nil {
@@ -123,7 +123,7 @@ func TestOnboardingRequiresPasswordConfirmationSessionAndCSRF(t *testing.T) {
 func TestOnboardingScopeAndSafeMatchesNeverAcceptProtectedAccount(t *testing.T) {
 	server, store := newTestServer(t)
 	defer server.Close()
-	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password1","password_confirmation":"a-strong-test-password1"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestOnboardingScopeAndSafeMatchesNeverAcceptProtectedAccount(t *testing.T) 
 func TestDiagnosticsAreSanitizedAndSyncEnableRejectsWrongPassword(t *testing.T) {
 	server, store := newTestServer(t)
 	defer server.Close()
-	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password1","password_confirmation":"a-strong-test-password1"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestDiagnosticsAreSanitizedAndSyncEnableRejectsWrongPassword(t *testing.T) 
 func TestDrivePreflightBlocksMissingDriveServerAndUnboundUser(t *testing.T) {
 	server, store := newTestServer(t)
 	defer server.Close()
-	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	setup, err := http.Post(server.URL+"/api/v1/setup", "application/json", bytes.NewBufferString(`{"password":"a-strong-test-password1","password_confirmation":"a-strong-test-password1"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +290,7 @@ func TestAuthenticatedDirectoryImport(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	setupBody := bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`)
+	setupBody := bytes.NewBufferString(`{"password":"a-strong-test-password1","password_confirmation":"a-strong-test-password1"}`)
 	setupRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", setupBody)
 	setupRequest.Header.Set("Content-Type", "application/json")
 	setupResponse, err := http.DefaultClient.Do(setupRequest)
@@ -365,7 +365,7 @@ func TestIdentityTestUsesUnsavedDingTalkCredentials(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	setupRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	setupRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"a-strong-test-password1","password_confirmation":"a-strong-test-password1"}`))
 	setupRequest.Header.Set("Content-Type", "application/json")
 	setupResponse, err := http.DefaultClient.Do(setupRequest)
 	if err != nil {
@@ -441,7 +441,7 @@ func TestDingTalkDiagnosisUsesDraftCredentialsAndReturnsVisibility(t *testing.T)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	setupRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"a-strong-test-password","password_confirmation":"a-strong-test-password"}`))
+	setupRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/setup", bytes.NewBufferString(`{"password":"a-strong-test-password1","password_confirmation":"a-strong-test-password1"}`))
 	setupRequest.Header.Set("Content-Type", "application/json")
 	setupResponse, err := http.DefaultClient.Do(setupRequest)
 	if err != nil {

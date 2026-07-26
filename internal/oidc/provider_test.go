@@ -36,7 +36,7 @@ func TestAuthorizationCodeFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.SetupAdmin("a-strong-admin-password"); err != nil {
+	if err := manager.SetupAdmin("a-strong-admin-password1"); err != nil {
 		t.Fatal(err)
 	}
 	var update config.Update

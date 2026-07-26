@@ -31,15 +31,30 @@ async function api(path, options = {}) {
 function showAuth(setup) {
 	$("authLayer").classList.remove("hidden");
 	$("authTitle").textContent = setup ? "设置 NASLink 管理密码" : "管理身份验证";
-	$("authDescription").textContent = setup ? "这是 NASLink 后台密码，不是 DSM、钉钉或企业微信密码。请设置至少 12 位的本地管理密码。" : "输入 NASLink 本地管理员密码。";
+	$("authDescription").textContent = setup ? "这是 NASLink 后台密码，不是 DSM、钉钉或企业微信密码。请设置至少 8 位，并同时包含字母和数字。" : "输入 NASLink 本地管理员密码。";
 	$("authForm").dataset.mode = setup ? "setup" : "login";
+	$("authPasswordFields").classList.remove("hidden");
 	$("adminPasswordConfirmationLabel").classList.toggle("hidden", !setup);
 	$("passwordStrength").classList.toggle("hidden", !setup);
 	$("adminPasswordConfirmation").required = setup;
 	$("adminPassword").autocomplete = setup ? "new-password" : "current-password";
-	$("authSubmit").textContent = setup ? "设置密码并开始配置" : "进入管理后台";
+	$("authSubmit").textContent = setup ? "设置管理密码" : "进入管理后台";
+	$("authSubmit").classList.remove("hidden");
+	$("setupLoginButton").classList.add("hidden");
+	$("authPrivacyNote").textContent = "密码不会发送到外部服务。";
 	$("logoutButton").classList.add("hidden");
 	setTimeout(() => $("adminPassword").focus(), 60);
+}
+
+function showSetupComplete() {
+	$("authForm").dataset.mode = "setup-complete";
+	$("authTitle").textContent = "管理密码设置完成";
+	$("authDescription").textContent = "请使用刚设置的密码登录 NASLink，然后继续连接群晖和企业通讯录。";
+	$("authPasswordFields").classList.add("hidden");
+	$("authSubmit").classList.add("hidden");
+	$("setupLoginButton").classList.remove("hidden");
+	$("authPrivacyNote").textContent = "NASLink 尚未连接或修改任何群晖账号。";
+	setTimeout(() => $("setupLoginButton").focus(), 60);
 }
 
 function hideAuth() {
@@ -60,9 +75,9 @@ async function boot() {
 }
 
 function passwordStrength(password) {
-	if (password.length < 12) return "请使用至少 12 位密码";
-	const kinds = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z\d]/].filter(pattern => pattern.test(password)).length;
-	return kinds >= 3 ? "密码强度：较好" : "密码强度：可用；建议混合字母、数字和符号";
+	if (password.length < 8) return "还需要输入至少 8 位";
+	if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return "密码必须同时包含字母和数字";
+	return /[^A-Za-z\d]/.test(password) ? "密码符合要求，且包含符号" : "密码符合要求";
 }
 
 $("adminPassword").addEventListener("input", () => {
@@ -76,14 +91,24 @@ $("authForm").addEventListener("submit", async event => {
 		const payload = { password: $("adminPassword").value };
 		if (setup) payload.password_confirmation = $("adminPasswordConfirmation").value;
 		const result = await api(setup ? "/api/v1/setup" : "/api/v1/session", { method: "POST", body: JSON.stringify(payload) });
-		state.csrf = result.csrf_token;
 		$("adminPassword").value = "";
 		$("adminPasswordConfirmation").value = "";
+		if (setup) {
+			state.csrf = result.csrf_token;
+			await api("/api/v1/session", { method: "DELETE" });
+			state.csrf = "";
+			showSetupComplete();
+			toast("管理密码设置完成");
+			return;
+		}
+		state.csrf = result.csrf_token;
 		hideAuth();
 		await Promise.all([loadSettings(), loadSystem(), loadLicense(), loadTasks(), loadOnboarding()]);
-		toast(setup ? "NASLink 管理员初始化完成，请继续首次配置" : "已进入管理后台");
+		toast("已进入管理后台");
 	} catch (error) { toast(error.message, true); }
 });
+
+$("setupLoginButton").addEventListener("click", () => showAuth(false));
 
 $("logoutButton").addEventListener("click", async () => {
   try { await api("/api/v1/session", { method: "DELETE" }); } catch {}

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 const passwordIterations = 210_000
@@ -301,8 +302,14 @@ func (m *Manager) IsSetup() bool {
 }
 
 func (m *Manager) SetupAdmin(password string) error {
-	if len(password) < 12 {
-		return errors.New("管理员密码至少需要 12 个字符")
+	runes := []rune(password)
+	hasLetter, hasDigit := false, false
+	for _, value := range runes {
+		hasLetter = hasLetter || unicode.IsLetter(value)
+		hasDigit = hasDigit || unicode.IsDigit(value)
+	}
+	if len(runes) < 8 || !hasLetter || !hasDigit {
+		return errors.New("管理员密码至少需要 8 位，并同时包含字母和数字")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

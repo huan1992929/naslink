@@ -270,7 +270,11 @@ body.onboarding-active .safety-lock { display: none; }
 .first-run-wizard {
 	display: grid;
 	place-items: start center;
-	min-height: calc(100dvh - var(--header-height));
+	height: calc(100dvh - var(--header-height));
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scrollbar-gutter: stable;
 	padding: var(--space-lg) var(--space-sm);
 }
 
@@ -1192,7 +1196,9 @@ td .secondary-button { min-height: 2.5rem; }
 .auth-brand { display: flex; align-items: center; gap: var(--space-xs); margin-block-end: var(--space-md); color: var(--color-neutral); font-size: var(--text-sm); }
 .auth-card h2 { font-size: var(--text-2xl); }
 .auth-card > p { margin-block: var(--space-2xs) var(--space-md); color: var(--color-neutral); font-size: var(--text-sm); }
+.auth-card #authPasswordFields { display: grid; gap: var(--space-xs); }
 .auth-card .primary-button { width: 100%; }
+.auth-card #setupLoginButton { margin-block-start: var(--space-xs); }
 .auth-card small { display: block; margin-block-start: var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); }
 
 .toast {

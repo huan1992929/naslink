@@ -7,10 +7,10 @@ func TestManagerEncryptsSecretsAndVerifiesAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.SetupAdmin("a-strong-admin-password"); err != nil {
+	if err := m.SetupAdmin("a-strong-admin-password1"); err != nil {
 		t.Fatal(err)
 	}
-	if !m.VerifyAdmin("a-strong-admin-password") {
+	if !m.VerifyAdmin("a-strong-admin-password1") {
 		t.Fatal("password should verify")
 	}
 	if m.VerifyAdmin("wrong-password") {
@@ -59,6 +59,25 @@ func TestManagerEncryptsSecretsAndVerifiesAdmin(t *testing.T) {
 	center, err := m.LicenseCenterCredentials()
 	if err != nil || center.ActivationCode != "NASL-TEST-CODE" {
 		t.Fatalf("license center credentials: %#v %v", center, err)
+	}
+}
+
+func TestManagerAdminPasswordRequiresEightCharactersLettersAndDigits(t *testing.T) {
+	for _, password := range []string{"short1", "abcdefgh", "12345678"} {
+		manager, err := NewManager(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := manager.SetupAdmin(password); err == nil {
+			t.Fatalf("unsafe password %q was accepted", password)
+		}
+	}
+	manager, err := NewManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.SetupAdmin("abcd1234"); err != nil {
+		t.Fatalf("valid eight-character password rejected: %v", err)
 	}
 }
 
