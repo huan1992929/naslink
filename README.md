@@ -1,4 +1,29 @@
-# NASLink for DingTalk / WeCom / Synology DSM
+# NASLink · 群晖企业身份桥
+
+**把钉钉、企业微信通讯录与群晖账号连接起来。**
+
+NASLink 面向使用 Synology NAS 的企业，将人员同步、已有账号匹配、部门群组管理与 Drive Web 免登录接入集中到一个 DSM 套件中。管理员可以先选择需要同步的部门与员工，查看变更预览，再执行同步并核对结果。
+
+[安装与使用说明](docs/USER_GUIDE.md) · [钉钉配置指南](docs/DINGTALK_SETUP_GUIDE.md) · [企业微信与 Drive 免登录](docs/WECOM_DRIVE_SSO.md) · [反馈问题](https://github.com/huan1992929/naslink/issues)
+
+## 核心功能
+
+| 场景 | NASLink 提供的能力 |
+| --- | --- |
+| 员工入职、调岗、离职 | 根据企业通讯录生成账号创建、群组调整与禁用计划 |
+| 已经在使用群晖 | 匹配并绑定已有账号，保留原账号与文件 |
+| 只同步部分人员 | 选择受管部门范围，预览具体变更 |
+| 部门对应访问群组 | 维护部门与 DSM 群组映射，负责人不自动获得管理员权限 |
+| 访问企业网盘 | 对接 DSM 原生 OIDC，为 Synology Drive Web 提供企业身份登录入口 |
+| 日常维护 | 搜索、筛选、分页、同步记录与写入后结果复核 |
+
+## 版本与适用范围
+
+- 当前为 **0.3.0-rc19 候选版本**，正式交付前应在目标设备和企业应用上完成验收。
+- 当前 SPK 面向 **DSM 7 / x86_64**；历史 DS920+ 实测记录见[测试报告](docs/DS920_LIVE_TEST_2026-07-18.md)，不代表所有机型或 DSM 版本均已验证。
+- 钉钉与企业微信需要企业管理员创建应用并授予所需通讯录权限。
+- Drive Web 免登录需要配置可信 HTTPS 地址及 DSM OIDC；原生桌面、移动客户端不在免登录承诺范围内。
+- 本仓库包含源代码与构建脚本；安装包可按下文自行构建。
 
 NASLink 是一个面向 DSM 7 的低权限 SPK，将钉钉或企业微信组织、人员变动、群晖本地账号生命周期、Synology Drive Web 单点登录集成在一个安装包内。
 
@@ -77,7 +102,9 @@ NASLink 是一个面向 DSM 7 的低权限 SPK，将钉钉或企业微信组织�
 ## 本地运行与测试
 
 ```bash
-export PATH=/tmp/codex-go-1.26.5/go/bin:$PATH
+# 先安装 Go 1.26 或兼容版本，并确保 go 已加入 PATH
+git clone https://github.com/huan1992929/naslink.git
+cd naslink
 go run ./cmd/naslink --listen 127.0.0.1:17890 --data-dir ./build/dev-data
 ```
 
