@@ -28,10 +28,85 @@
     </nav>
     <span class="safety-lock">默认只读</span>
     <div class="runtime"><i id="runtimeDot"></i><span id="runtimeText">正在检查服务</span></div>
+    <button id="helpButton" class="text-button hidden" type="button" aria-controls="helpPage" aria-expanded="false">帮助</button>
     <button id="logoutButton" class="text-button hidden" type="button">退出</button>
   </header>
 
   <main id="shell" class="shell">
+    <section id="helpPage" class="help-page hidden" aria-labelledby="helpTitle">
+      <div class="help-header">
+        <div><span class="help-kicker">NASLink 使用帮助</span><h1 id="helpTitle">从连接到员工同步</h1><p>按页面顺序操作即可。任何写入都会先生成预览，不会删除 DSM 账号或文件。</p></div>
+        <button id="closeHelpButton" class="secondary-button" type="button">返回后台</button>
+      </div>
+      <div class="help-layout">
+        <nav class="help-toc" aria-label="帮助目录">
+          <strong>目录</strong>
+          <a href="#helpQuick">快速开始</a>
+          <a href="#helpDingTalk">配置钉钉</a>
+          <a href="#helpWeCom">配置企业微信</a>
+          <a href="#helpMatch">账号匹配与同步</a>
+          <a href="#helpDrive">Drive 免登录</a>
+          <a href="#helpDaily">日常使用</a>
+          <a href="#helpTroubleshooting">常见问题</a>
+          <a href="#helpSafety">安全说明</a>
+        </nav>
+        <article class="help-document">
+          <section id="helpQuick">
+            <h2>快速开始</h2>
+            <p>首次使用请依次完成以下步骤。连接和盘点只读取数据，直到“同步中心”确认执行前都不会修改群晖。</p>
+            <ol class="help-steps">
+              <li><b>设置管理密码</b><span>至少 8 位，同时包含字母和数字。它只用于 NASLink 后台。</span></li>
+              <li><b>连接这台群晖</b><span>套件安装在本机时通常会自动填写地址；填写具有用户与群组管理权限的 DSM 服务账号。</span></li>
+              <li><b>连接企业通讯录</b><span>选择钉钉或企业微信，填写自建应用凭据并验证权限。</span></li>
+              <li><b>选择同步范围</b><span>先选择需要使用群晖的部门，不建议第一次就同步全公司。</span></li>
+              <li><b>确认已有账号</b><span>优先把员工绑定到原 DSM 账号，保留其文件、配额与权限。</span></li>
+              <li><b>预览并执行同步</b><span>检查新增、禁用和群组变化，输入确认词后才会写入。</span></li>
+              <li><b>配置 Drive 免登录</b><span>这是可选项，不影响通讯录和账号同步。</span></li>
+            </ol>
+          </section>
+          <section id="helpDingTalk">
+            <h2>配置钉钉</h2>
+            <p>在钉钉开放平台创建企业内部应用，取得 Client ID（AppKey）和 Client Secret。应用需获得组织、部门和员工只读权限；NASLink 不能代替企业管理员开通这些权限。</p>
+            <ul><li>先保存凭据，再点“验证钉钉连接”。</li><li>验证结果应同时显示部门读取和员工读取成功。</li><li>如提示权限不足，请回到钉钉应用权限管理补齐通讯录权限并重新发布应用。</li></ul>
+          </section>
+          <section id="helpWeCom">
+            <h2>配置企业微信</h2>
+            <p>在企业微信管理后台创建自建应用，填写 Corp ID、Agent ID 和 Secret，并把可信域名、应用主页及回调地址设置为 NASLink 页面给出的地址。</p>
+            <ul><li>通讯录可见范围决定 NASLink 能读取哪些部门和员工。</li><li>用于免登录时，需要额外配置网页授权与回调域名。</li><li>Secret 只加密保存在当前 NAS，不会显示在日志中。</li></ul>
+          </section>
+          <section id="helpMatch">
+            <h2>账号匹配与同步</h2>
+            <p>NASLink 先比较工号、企业邮箱、用户名和描述，给出已有账号候选。确定性匹配可批量确认；同名、多人共用账号或管理员账号必须人工处理。</p>
+            <div class="help-callout"><b>推荐工作流</b><span>选择部门 → 刷新通讯录 → 确认已有账号 → 生成同步预览 → 检查风险 → 执行并自动复核。</span></div>
+            <ul><li>新员工：按命名规则创建 DSM 账号并加入受管部门群组。</li><li>调岗：加入新部门群组；是否移出旧群组由同步策略决定。</li><li>离职：默认禁用已绑定账号，不删除账号、Home 或 Drive 文件。</li><li>重新入职：平台用户 ID 相同则恢复原绑定，不创建重复账号。</li></ul>
+          </section>
+          <section id="helpDrive">
+            <h2>Synology Drive Web 免登录</h2>
+            <p>Drive Web 免登录使用 DSM 原生 OIDC。先确认 Synology Drive Server 已安装并运行，再在“连接配置 → Drive 免登”填写 Issuer、Client ID、Client Secret 和 DSM Redirect URI。</p>
+            <p>企业微信或钉钉完成身份认证后，NASLink 只为已绑定且启用的 DSM 用户签发身份。桌面版 Synology Drive Client 的登录方式取决于客户端版本，不等同于 Web 免登录。</p>
+          </section>
+          <section id="helpDaily">
+            <h2>日常使用</h2>
+            <ul><li><b>首页：</b>查看服务状态和待处理数量。</li><li><b>员工与部门：</b>查看同步范围、员工状态和绑定结果。</li><li><b>待处理：</b>处理冲突、查看预览和同步历史。</li><li><b>设置：</b>修改 DSM、身份源、同步策略、Drive 与授权配置。</li></ul>
+            <p>人员变动建议由事件或定时任务生成待确认计划；初期不要开启“人员变动事件自动执行”。</p>
+          </section>
+          <section id="helpTroubleshooting">
+            <h2>常见问题</h2>
+            <dl class="help-faq">
+              <dt>填写了钉钉凭据仍提示为空</dt><dd>先点击“保存配置”，再验证连接；如 Secret 输入框显示“已保存”，无需重复填写。</dd>
+              <dt>匹配后 DSM 没有新账号</dt><dd>匹配只建立身份关系，不会立即写入。还需到“同步中心”生成预览、确认计划并执行。</dd>
+              <dt>盘点看不到部门群组</dt><dd>先在“DSM 盘点”切换到群组盘点；平台部门只有在同步预览确认后才会创建对应受管群组。</dd>
+              <dt>登录后看不到原来的 Drive 文件</dt><dd>通常是绑定到了新账号。停止同步，在账号匹配中改绑原 DSM 账号，不要迁移或删除文件。</dd>
+              <dt>DSM 连接失败</dt><dd>检查 DSM HTTPS 端口、服务账号权限和自签名证书选项；套件本机连接通常使用 127.0.0.1:5001。</dd>
+            </dl>
+          </section>
+          <section id="helpSafety">
+            <h2>安全说明</h2>
+            <ul><li>建议新建专用 DSM 服务账号，不长期使用个人管理员账号。</li><li>首次上线只选择一个小部门试运行，完成盘点和复核后再扩大范围。</li><li>NASLink 不提供自动删除账号或文件的功能。</li><li>导出日志或状态备份前，确认其中不包含 App Secret、密码或员工敏感信息。</li><li>不要把 17890 管理端口直接暴露到公网。</li></ul>
+          </section>
+        </article>
+      </div>
+    </section>
     <section id="firstRunWizard" class="first-run-wizard hidden" aria-labelledby="wizardTitle">
       <div class="wizard-card">
         <span class="wizard-kicker">首次配置 · 可随时继续</span>

@@ -116,6 +116,7 @@ go run ./cmd/licensegen \
 
 ## 文档
 
+- [安装与使用说明](docs/USER_GUIDE.md)
 - [架构说明](docs/ARCHITECTURE.md)
 - [DS920+ 家庭测试指南](docs/HOME_TEST_GUIDE.md)
 - [DS920+ 实机安装测试报告](docs/DS920_LIVE_TEST_2026-07-18.md)

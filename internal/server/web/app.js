@@ -29,6 +29,9 @@ async function api(path, options = {}) {
 }
 
 function showAuth(setup) {
+	document.body.classList.remove("help-active");
+	$("helpPage").classList.add("hidden");
+	$("helpButton").setAttribute("aria-expanded", "false");
 	document.body.classList.add("auth-only");
 	$("authLayer").classList.remove("hidden");
 	$("authTitle").textContent = setup ? "设置 NASLink 管理密码" : "管理身份验证";
@@ -43,6 +46,7 @@ function showAuth(setup) {
 	$("authSubmit").classList.remove("hidden");
 	$("setupLoginButton").classList.add("hidden");
 	$("authPrivacyNote").textContent = "密码不会发送到外部服务。";
+	$("helpButton").classList.add("hidden");
 	$("logoutButton").classList.add("hidden");
 	setTimeout(() => $("adminPassword").focus(), 60);
 }
@@ -61,6 +65,7 @@ function showSetupComplete() {
 function hideAuth() {
   document.body.classList.remove("auth-only");
   $("authLayer").classList.add("hidden");
+  $("helpButton").classList.remove("hidden");
   $("logoutButton").classList.remove("hidden");
 }
 
@@ -111,6 +116,21 @@ $("authForm").addEventListener("submit", async event => {
 });
 
 $("setupLoginButton").addEventListener("click", () => showAuth(false));
+
+$("helpButton").addEventListener("click", () => {
+	document.body.classList.add("help-active");
+	$("helpPage").classList.remove("hidden");
+	$("helpButton").setAttribute("aria-expanded", "true");
+	window.scrollTo(0, 0);
+	setTimeout(() => $("closeHelpButton").focus(), 60);
+});
+
+$("closeHelpButton").addEventListener("click", () => {
+	document.body.classList.remove("help-active");
+	$("helpPage").classList.add("hidden");
+	$("helpButton").setAttribute("aria-expanded", "false");
+	$("helpButton").focus();
+});
 
 $("logoutButton").addEventListener("click", async () => {
   try { await api("/api/v1/session", { method: "DELETE" }); } catch {}
@@ -283,6 +303,9 @@ function activatePage(target) {
   document.querySelectorAll(".nav-item,.panel").forEach(element => element.classList.remove("active"));
   button.classList.add("active");
   $(target).classList.add("active");
+  document.body.classList.remove("help-active");
+  $("helpPage").classList.add("hidden");
+  $("helpButton").setAttribute("aria-expanded", "false");
   $("adminRail").classList.remove("is-open");
   $("mobileNavToggle").setAttribute("aria-expanded", "false");
   $("mobileNavToggle").setAttribute("aria-label", "打开管理导航");
